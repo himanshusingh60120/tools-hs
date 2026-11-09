@@ -154,31 +154,19 @@
   .trust li { padding-left: 30px; position: relative; }
   .trust li::before { content: ""; position: absolute; left: 4px; top: 7px; width: 12px; height: 7px; border-left: 2px solid var(--green); border-bottom: 2px solid var(--green); transform: rotate(-45deg); }
 
-  /* flow */
-  .lanes { display: grid; gap: 18px; }
-  .lane { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
-  .lane h3 { font-size: 1.15rem; margin-bottom: 4px; }
-  .lane > p { color: var(--muted); font-size: 0.97rem; margin-bottom: 16px; }
-  .chain { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; }
-  .node { display: flex; flex-direction: column; justify-content: center; text-align: left; min-width: 170px; max-width: 230px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--ink); background: var(--paper); font: 400 0.9rem var(--body); color: var(--muted); cursor: pointer; }
-  .node b { font: 700 1rem var(--display); color: var(--ink); letter-spacing: -0.01em; margin-bottom: 2px; }
-  .node:hover { background: var(--blue-soft); border-color: var(--blue); }
-  .node.ext { border-style: dashed; border-color: var(--line); cursor: default; background: transparent; }
-  .node.ext:hover { background: transparent; }
-  .link { flex: 0 0 34px; align-self: center; height: 2px; background: var(--ink); position: relative; }
-  .link::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left: 7px solid var(--ink); border-right: 0; }
-
-  footer { border-top: 1px solid var(--line); padding: 48px 0 64px; }
-  footer .wrap { display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; }
-  footer h2 { font-size: 1.6rem; margin-bottom: 10px; }
-  footer p { color: var(--muted); }
-  footer a { font-weight: 600; }
+  /* footer: signature */
+  footer { border-top: 1px solid var(--line); padding: 56px 0 64px; }
+  .sig { display: grid; justify-items: center; text-align: center; gap: 6px; }
+  .sig .name { font: 700 1.9rem/1.1 var(--display); letter-spacing: -0.02em; margin: 0; }
+  .sig .role { color: var(--muted); margin: 0 0 10px; max-width: none; }
+  .sig a { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; text-decoration: none; padding: 9px 16px; border: 1px solid var(--ink); border-radius: 8px; }
+  .sig a:hover { background: var(--ink); color: #fff; }
+  .sig a svg { width: 16px; height: 16px; }
 
   @media (max-width: 980px) {
     .picker { grid-template-columns: 1fr; }
     .jobs { border-right: 0; border-bottom: 1px solid var(--line); }
     .tool { grid-template-columns: 1fr; gap: 18px; }
-    footer .wrap { grid-template-columns: 1fr; }
   }
   @media (max-width: 720px) {
     .wrap { padding: 0 18px; }
@@ -190,10 +178,6 @@
     .board, .board tbody, .board tr, .board td { display: block; width: 100%; }
     .board tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
     .board td { border: 0; padding: 6px 16px; }
-    .chain { flex-direction: column; }
-    .node { max-width: none; }
-    .link { flex-basis: 22px; width: 2px; height: 22px; margin-left: 24px; align-self: flex-start; }
-    .link::after { right: auto; left: -4px; top: auto; bottom: -1px; border: 5px solid transparent; border-top: 7px solid var(--ink); border-bottom: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
@@ -212,7 +196,6 @@
       <a href="#jobs">Pick a job</a>
       <a href="#status">Live status</a>
       <a href="#tools">The tools</a>
-      <a href="#flow">How they connect</a>
     </nav>
     <span class="clock" id="clock" aria-label="Time in India"></span>
   </div>
@@ -264,60 +247,16 @@
       <div id="toolList"></div>
     </div>
   </section>
-
-  <section id="flow">
-    <div class="wrap">
-      <div class="head">
-        <div>
-          <h2>How they connect</h2>
-          <p>The tools hand work to each other. Click any tool to jump to it.</p>
-        </div>
-      </div>
-      <div class="lanes">
-        <div class="lane">
-          <h3>Sales and outreach</h3>
-          <p>From "who should we contact?" to four checked emails, without a person researching each lead.</p>
-          <div class="chain">
-            <button class="node" data-go="prospect"><b>Prospect Finder</b>finds companies with fresh news and the people to contact</button><span class="link" aria-hidden="true"></span>
-            <button class="node" data-go="cadence"><b>Cadence Engine</b>matches a report and writes four checked emails</button><span class="link" aria-hidden="true"></span>
-            <span class="node ext"><b>Sending tool</b>sends only rows marked Ready</span>
-          </div>
-        </div>
-        <div class="lane">
-          <h3>Content, from brief to ranking</h3>
-          <p>A report page is planned, linked, checked and tracked with the same data every time.</p>
-          <div class="chain">
-            <button class="node" data-go="xray"><b>Ranking X-Ray</b>brief: what to write to beat competitors</button><span class="link" aria-hidden="true"></span>
-            <span class="node ext"><b>Writer</b>drafts the page</span><span class="link" aria-hidden="true"></span>
-            <button class="node" data-go="interlinker"><b>Interlinker</b>adds links from every live page</button><span class="link" aria-hidden="true"></span>
-            <button class="node" data-go="xray"><b>Ranking X-Ray</b>checks the draft, then tracks ranks weekly</button>
-          </div>
-        </div>
-        <div class="lane">
-          <h3>Site health</h3>
-          <p>Problems are spotted on one screen and fixed with tools built for each kind of problem.</p>
-          <div class="chain">
-            <button class="node" data-go="dashboard"><b>SEO dashboard</b>spots drops, 404s and pages leaving Google</button><span class="link" aria-hidden="true"></span>
-            <button class="node" data-go="redirect"><b>Redirect Mapper</b>turns 404s into 301 redirects</button><span class="link" aria-hidden="true"></span>
-            <button class="node" data-go="scraper"><b>URL Scraper</b>audits titles, headings and links</button><span class="link" aria-hidden="true"></span>
-            <button class="node" data-go="search"><b>Content Search</b>finds stale text across all six sites</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
 </main>
 
 <footer>
-  <div class="wrap">
-    <div>
-      <h2>Built in-house, used every week</h2>
-      <p>Designed, built and maintained by Himanshu Singh, Technology Analyst, Kings Global Ventures. Every tool here started with a teammate's manual task and ships only once its output can be checked against the source.</p>
-    </div>
-    <div>
-      <p>Questions, access or a job you'd like automated next:<br><a href="mailto:hsingh@kingsresearch.com">hsingh@kingsresearch.com</a></p>
-      <p class="muted" style="font-size:0.9rem">Internal tools. Some links need a Kings Research group Google account.</p>
-    </div>
+  <div class="wrap sig">
+    <p class="name">Himanshu Singh</p>
+    <p class="role">Technology Analyst, Kings Research</p>
+    <a href="https://www.linkedin.com/in/himanshu-singh-tech-analyst/" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9.75h4v11H3v-11zm7 0h3.8v1.5h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1v5.45h-4v-4.83c0-1.15-.02-2.63-1.6-2.63-1.6 0-1.85 1.25-1.85 2.55v4.91h-4v-11z"/></svg>
+      LinkedIn
+    </a>
   </div>
 </footer>
 
@@ -535,7 +474,6 @@
     { job: `Write outreach for 1,000 prospects`, tool: 'cadence', before: [`Research each prospect and find a relevant report`, `Write four emails per person by hand`, `Re-read everything for wrong facts and names`], now: `A checked four-email cadence per prospect, built from a real report page, or held with the reason it isn't safe.` }
   ];
 
-  const isExternal = (t) => /^https?:/.test(t.url);
   const linkFor = (t, cls) => `<a class="btn ${cls || ''}" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.linkLabel || 'Open tool')} ${EXT}</a>`;
   const pill = (t) => `<span class="pill ${STATUS[t.status].cls}" data-pill="${t.id}"><i></i>${STATUS[t.status].label}</span>`;
 
