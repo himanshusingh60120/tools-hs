@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kings Research digital tools: eight tools that replaced manual work</title>
+<meta name="description" content="Eight internal tools built at Kings Research for SEO, content and outreach: what each one replaced, how it works, and where to open it.">
+<meta property="og:title" content="Kings Research digital tools">
+<meta property="og:description" content="Eight internal tools that replaced copy-paste work across SEO, content and outreach.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23142030'/%3E%3Ctext x='32' y='42' font-family='Arial' font-weight='700' font-size='26' text-anchor='middle' fill='%23F5F6F8'%3EKR%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F5F6F8;
+    --sheet: #FFFFFF;
+    --ink: #142030;
+    --muted: #586474;
+    --line: #D6DBE2;
+    --blue: #2546C8;
+    --blue-soft: #E7ECFB;
+    --amber: #B9761A;
+    --amber-soft: #F7EEDF;
+    --green: #17855A;
+    --green-soft: #E2F2EA;
+    --violet: #6A4BC4;
+    --violet-soft: #EEEAFA;
+    --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    --wrap: 1180px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 28px; }
+  h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.08; letter-spacing: -0.02em; }
+  h2 { font-size: clamp(1.8rem, 3.2vw, 2.6rem); font-weight: 700; }
+  h3 { font-size: 1.55rem; font-weight: 700; }
+  p { margin: 0 0 1em; max-width: 68ch; }
+  .muted { color: var(--muted); }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--ink); color: #fff; padding: 8px 12px; border-radius: 6px; z-index: 50; }
+  .skip:focus { left: 8px; }
+
+  /* top bar */
+  .bar { position: sticky; top: 0; z-index: 20; background: rgba(245, 246, 248, 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .bar .wrap { display: flex; align-items: center; gap: 24px; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; }
+  .brand b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--ink); color: var(--paper); font: 700 0.8rem var(--display); letter-spacing: 0.02em; }
+  .nav { display: flex; gap: 20px; margin-left: auto; font-size: 0.95rem; }
+  .nav a { text-decoration: none; color: var(--muted); }
+  .nav a:hover { color: var(--ink); }
+  .clock { font: 500 0.85rem var(--mono); color: var(--muted); white-space: nowrap; }
+
+  /* hero */
+  .hero { padding: 72px 0 40px; }
+  .hero h1 { font-size: clamp(2.5rem, 6vw, 5rem); font-weight: 800; max-width: 17ch; }
+  .was { display: block; color: var(--muted); font-weight: 500; font-size: 0.56em; letter-spacing: -0.01em; margin-bottom: 0.35em; }
+  .was span { position: relative; display: inline-block; margin-right: 0.35em; }
+  .was span::after { content: ""; position: absolute; left: -2px; right: -2px; top: 54%; height: 0.09em; background: var(--amber); transform-origin: left; transform: scaleX(0); animation: strike 520ms cubic-bezier(.2,.7,.2,1) forwards; }
+  .was span:nth-child(2)::after { animation-delay: 380ms; }
+  .was span:nth-child(3)::after { animation-delay: 760ms; }
+  .was span:nth-child(4)::after { animation-delay: 1140ms; }
+  @keyframes strike { to { transform: scaleX(1); } }
+  .lede { font-size: 1.2rem; color: var(--muted); margin-top: 22px; max-width: 60ch; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* job picker */
+  .picker { margin-top: 44px; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr); background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .jobs { border-right: 1px solid var(--line); padding: 18px; }
+  .jobs h2 { font-size: 1.15rem; font-family: var(--body); font-weight: 600; letter-spacing: 0; margin: 4px 6px 12px; }
+  .jobs ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .jobs button { width: 100%; text-align: left; font: 500 1rem var(--body); color: var(--ink); background: transparent; border: 0; border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .jobs button:hover { background: var(--paper); }
+  .jobs button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .jobs button small { font: 400 0.8rem var(--body); color: var(--muted); white-space: nowrap; }
+  .jobs button[aria-pressed="true"] small { color: #C3CBD6; }
+  .answer { padding: 30px 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-content: start; transition: opacity 180ms ease; }
+  .answer.swap { opacity: 0; }
+  .answer h3 { font-size: 1rem; font-family: var(--body); font-weight: 600; letter-spacing: 0; margin-bottom: 12px; }
+  .before ol { margin: 0; padding-left: 1.2em; color: var(--muted); }
+  .before li { margin: 0 0 10px; text-decoration: line-through; text-decoration-color: var(--amber); text-decoration-thickness: 2px; }
+  .before h3 { color: var(--amber); }
+  .now h3 { color: var(--blue); }
+  .now .tname { font: 700 1.6rem/1.1 var(--display); letter-spacing: -0.02em; margin-bottom: 10px; }
+  .now p { margin-bottom: 18px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font: 600 0.95rem var(--body); text-decoration: none; padding: 10px 16px; border-radius: 8px; border: 1px solid var(--ink); background: var(--ink); color: #fff; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn svg { width: 14px; height: 14px; }
+
+  section { padding: 84px 0; border-top: 1px solid var(--line); }
+  .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 16px 40px; margin-bottom: 30px; }
+  .head p { margin: 10px 0 0; color: var(--muted); }
+
+  /* status */
+  .pill { display: inline-flex; align-items: center; gap: 7px; font: 600 0.85rem var(--body); padding: 4px 11px; border-radius: 999px; white-space: nowrap; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .s-live { background: var(--green-soft); color: var(--green); }
+  .s-local { background: var(--blue-soft); color: var(--blue); }
+  .s-testing { background: var(--violet-soft); color: var(--violet); }
+  .s-live.checking i { animation: blink 900ms ease-in-out infinite; }
+  .s-down { background: var(--amber-soft); color: var(--amber); }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  .board { width: 100%; border-collapse: collapse; background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; font-size: 0.97rem; }
+  .board th, .board td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .board th { font-weight: 600; color: var(--muted); font-size: 0.88rem; background: #FAFBFC; }
+  .board tr:last-child td { border-bottom: 0; }
+  .board td.t a { font-weight: 600; text-decoration: none; }
+  .board td.t a:hover { color: var(--blue); }
+  .board .host { display: block; font: 400 0.8rem var(--mono); color: var(--muted); }
+  .board .ms { font: 400 0.8rem var(--mono); color: var(--muted); margin-left: 8px; }
+  .boardfoot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; margin-top: 14px; color: var(--muted); font-size: 0.92rem; }
+
+  /* tools */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font: 500 0.92rem var(--body); border: 1px solid var(--line); background: var(--sheet); color: var(--ink); border-radius: 999px; padding: 7px 15px; cursor: pointer; }
+  .chip:hover { border-color: var(--ink); }
+  .chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .tool { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 40px; padding: 44px 0; border-top: 1px solid var(--line); }
+  .tool:first-of-type { border-top: 0; }
+  .tool.flash { animation: flash 1400ms ease; }
+  @keyframes flash { 0%, 40% { background: var(--blue-soft); } 100% { background: transparent; } }
+  .tool aside .team { color: var(--muted); font-size: 0.92rem; margin-bottom: 8px; }
+  .tool aside h3 { font-size: 2rem; margin-bottom: 12px; }
+  .tool aside p { color: var(--muted); }
+  .tool aside .pill { margin-bottom: 16px; }
+  .tool aside .note { font-size: 0.9rem; color: var(--muted); margin-top: 14px; border-left: 3px solid var(--line); padding-left: 12px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+  .tab { font: 600 0.95rem var(--body); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 14px; color: var(--muted); cursor: pointer; }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--blue); }
+  .panel { animation: fadein 220ms ease; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .panel p { font-size: 1.08rem; }
+  .steps { list-style: none; margin: 0; padding: 0; counter-reset: s; display: grid; gap: 0; }
+  .steps li { counter-increment: s; position: relative; padding: 0 0 22px 52px; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--sheet); border: 2px solid var(--ink); display: grid; place-items: center; font: 700 0.9rem var(--display); }
+  .steps li::after { content: ""; position: absolute; left: 15px; top: 34px; bottom: 2px; width: 2px; background: var(--line); }
+  .steps li:last-child::after { display: none; }
+  .steps b { display: block; font-weight: 600; font-size: 1.05rem; padding-top: 3px; }
+  .steps span { color: var(--muted); }
+  .feats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; border-top: 1px solid var(--line); }
+  .feats div { padding: 14px 18px 14px 0; border-bottom: 1px solid var(--line); }
+  .feats dt { font-weight: 600; margin-bottom: 2px; }
+  .feats dd { margin: 0; color: var(--muted); font-size: 0.97rem; }
+  .trust { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+  .trust li { padding-left: 30px; position: relative; }
+  .trust li::before { content: ""; position: absolute; left: 4px; top: 7px; width: 12px; height: 7px; border-left: 2px solid var(--green); border-bottom: 2px solid var(--green); transform: rotate(-45deg); }
+
+  /* flow */
+  .lanes { display: grid; gap: 18px; }
+  .lane { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .lane h3 { font-size: 1.15rem; margin-bottom: 4px; }
+  .lane > p { color: var(--muted); font-size: 0.97rem; margin-bottom: 16px; }
+  .chain { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; }
+  .node { display: flex; flex-direction: column; justify-content: center; text-align: left; min-width: 170px; max-width: 230px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--ink); background: var(--paper); font: 400 0.9rem var(--body); color: var(--muted); cursor: pointer; }
+  .node b { font: 700 1rem var(--display); color: var(--ink); letter-spacing: -0.01em; margin-bottom: 2px; }
+  .node:hover { background: var(--blue-soft); border-color: var(--blue); }
+  .node.ext { border-style: dashed; border-color: var(--line); cursor: default; background: transparent; }
+  .node.ext:hover { background: transparent; }
+  .link { flex: 0 0 34px; align-self: center; height: 2px; background: var(--ink); position: relative; }
+  .link::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left: 7px solid var(--ink); border-right: 0; }
+
+  footer { border-top: 1px solid var(--line); padding: 48px 0 64px; }
+  footer .wrap { display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; }
+  footer h2 { font-size: 1.6rem; margin-bottom: 10px; }
+  footer p { color: var(--muted); }
+  footer a { font-weight: 600; }
+
+  @media (max-width: 980px) {
+    .picker { grid-template-columns: 1fr; }
+    .jobs { border-right: 0; border-bottom: 1px solid var(--line); }
+    .tool { grid-template-columns: 1fr; gap: 18px; }
+    footer .wrap { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .wrap { padding: 0 18px; }
+    .nav { display: none; }
+    .clock { margin-left: auto; }
+    .answer { grid-template-columns: 1fr; padding: 22px; }
+    .feats { grid-template-columns: 1fr; }
+    .board thead { display: none; }
+    .board, .board tbody, .board tr, .board td { display: block; width: 100%; }
+    .board tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+    .board td { border: 0; padding: 6px 16px; }
+    .chain { flex-direction: column; }
+    .node { max-width: none; }
+    .link { flex-basis: 22px; width: 2px; height: 22px; margin-left: 24px; align-self: flex-start; }
+    .link::after { right: auto; left: -4px; top: auto; bottom: -1px; border: 5px solid transparent; border-top: 7px solid var(--ink); border-bottom: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .was span::after { animation: none; transform: scaleX(1); }
+    .answer, .panel, .tool.flash, .s-live.checking i { transition: none; animation: none; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#tools">Skip to the tools</a>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="#top"><b>KR</b> Digital tools</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#jobs">Pick a job</a>
+      <a href="#status">Live status</a>
+      <a href="#tools">The tools</a>
+      <a href="#flow">How they connect</a>
+    </nav>
+    <span class="clock" id="clock" aria-label="Time in India"></span>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <h1>
+      <span class="was" aria-label="What the team used to do by hand"><span>Six browser tabs.</span><span>Every page opened by hand.</span><span>Links from memory.</span><span>Emails written one by one.</span></span>
+      Eight tools do that work for the team now.
+    </h1>
+    <p class="lede">Built inside Kings Research to replace the copy-paste work around <strong>SEO, content and outreach</strong>. Six are live online; two run on a team machine because they still change almost every day. Pick a job below to see what it used to take, and what it takes now.</p>
+
+    <div class="picker" id="jobs">
+      <div class="jobs">
+        <h2>What do you need to do?</h2>
+        <ul id="jobList"></ul>
+      </div>
+      <div class="answer" id="answer" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <section id="status">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <h2>Live status</h2>
+          <p>This page checks each online tool from your browser when it loads. The two local tools run on a team machine, so they aren't reachable from here.</p>
+        </div>
+        <button class="btn ghost" type="button" id="recheck">Check again</button>
+      </div>
+      <table class="board">
+        <thead><tr><th>Tool</th><th>Used by</th><th>Where it runs</th><th>Status</th></tr></thead>
+        <tbody id="boardBody"></tbody>
+      </table>
+      <div class="boardfoot"><span id="boardSummary">Checking the tools…</span><span>The SEO dashboard asks for a company Google sign-in; the others open directly.</span></div>
+    </div>
+  </section>
+
+  <section id="tools">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <h2>The tools</h2>
+          <p>Each one started as a job someone on the team did by hand every week. Open a tab to see the problem, the steps, what it covers, and why its output can be trusted.</p>
+        </div>
+        <div class="filters" id="filters" role="group" aria-label="Filter tools by team"></div>
+      </div>
+      <div id="toolList"></div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <h2>How they connect</h2>
+          <p>The tools hand work to each other. Click any tool to jump to it.</p>
+        </div>
+      </div>
+      <div class="lanes">
+        <div class="lane">
+          <h3>Sales and outreach</h3>
+          <p>From "who should we contact?" to four checked emails, without a person researching each lead.</p>
+          <div class="chain">
+            <button class="node" data-go="prospect"><b>Prospect Finder</b>finds companies with fresh news and the people to contact</button><span class="link" aria-hidden="true"></span>
+            <button class="node" data-go="cadence"><b>Cadence Engine</b>matches a report and writes four checked emails</button><span class="link" aria-hidden="true"></span>
+            <span class="node ext"><b>Sending tool</b>sends only rows marked Ready</span>
+          </div>
+        </div>
+        <div class="lane">
+          <h3>Content, from brief to ranking</h3>
+          <p>A report page is planned, linked, checked and tracked with the same data every time.</p>
+          <div class="chain">
+            <button class="node" data-go="xray"><b>Ranking X-Ray</b>brief: what to write to beat competitors</button><span class="link" aria-hidden="true"></span>
+            <span class="node ext"><b>Writer</b>drafts the page</span><span class="link" aria-hidden="true"></span>
+            <button class="node" data-go="interlinker"><b>Interlinker</b>adds links from every live page</button><span class="link" aria-hidden="true"></span>
+            <button class="node" data-go="xray"><b>Ranking X-Ray</b>checks the draft, then tracks ranks weekly</button>
+          </div>
+        </div>
+        <div class="lane">
+          <h3>Site health</h3>
+          <p>Problems are spotted on one screen and fixed with tools built for each kind of problem.</p>
+          <div class="chain">
+            <button class="node" data-go="dashboard"><b>SEO dashboard</b>spots drops, 404s and pages leaving Google</button><span class="link" aria-hidden="true"></span>
+            <button class="node" data-go="redirect"><b>Redirect Mapper</b>turns 404s into 301 redirects</button><span class="link" aria-hidden="true"></span>
+            <button class="node" data-go="scraper"><b>URL Scraper</b>audits titles, headings and links</button><span class="link" aria-hidden="true"></span>
+            <button class="node" data-go="search"><b>Content Search</b>finds stale text across all six sites</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <h2>Built in-house, used every week</h2>
+      <p>Designed, built and maintained by Himanshu Singh, Technology Analyst, Kings Global Ventures. Every tool here started with a teammate's manual task and ships only once its output can be checked against the source.</p>
+    </div>
+    <div>
+      <p>Questions, access or a job you'd like automated next:<br><a href="mailto:hsingh@kingsresearch.com">hsingh@kingsresearch.com</a></p>
+      <p class="muted" style="font-size:0.9rem">Internal tools. Some links need a Kings Research group Google account.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const EXT = '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3H3v10h10v-3M9 3h4v4M13 3 7 9"/></svg>';
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const TEAMS = { site: `SEO and site health`, content: `Content`, sales: `Sales and outreach` };
+  const STATUS = {
+    live: { cls: 's-live', label: `Live online`, where: `Online, on Vercel` },
+    local: { cls: 's-local', label: `Runs locally`, where: `Team machine` },
+    testing: { cls: 's-testing', label: `In testing`, where: `Team machine` }
+  };
+
+  const TOOLS = [
+    {
+      id: 'dashboard', name: `SEO & Traffic Dashboard`, short: `SEO dashboard`, team: 'site', status: 'live',
+      url: 'https://seo-dashboard-kr-dd.vercel.app', host: 'seo-dashboard-kr-dd.vercel.app',
+      summary: `Search Console and GA4 for every property in one screen: rankings, indexing, crawling, traffic, leads and bot traffic.`,
+      problem: [`Checking a site's health meant six tabs: Search Console, GA4, the sitemaps and a spreadsheet to stitch them together. Numbers were copied by hand, the date ranges never quite matched, and every screenshot was already a few days old when it reached the team.`,
+        `Some of the most useful data, like Google's crawl stats and the page indexing report, can't be exported at all and disappears after 90 days.`],
+      steps: [
+        [`Sign in with a company Google account`, `Kings Research group domains only. Each person sees just the properties they already have in Google.`],
+        [`Pick a property and a period`, `Search Console and GA4 dates line up automatically, compared with the previous period or last year.`],
+        [`Read the tabs`, `Overview, rankings, indexing, crawl activity, queries, traffic, CTAs, bot check and an AI audit.`],
+        [`Check any number`, `Every figure has a Source button that opens the same report in Google, on the same dates.`]
+      ],
+      features: [
+        [`Overview`, `Clicks, impressions, CTR, position, active users, sessions and live visitors, with change against the previous period.`],
+        [`Rankings`, `Pages by position band, plus pages that dropped five places or disappeared from search.`],
+        [`Indexing`, `Google's own URL Inspection for the sitemaps you choose, and every page that ranked, set against Search Console's totals.`],
+        [`Live index monitor`, `Checks fresh data every 15 minutes and alerts when a page drops out of Google.`],
+        [`Crawl activity`, `Googlebot visits per day, split into refresh and discovery, kept past Google's 90 days and shared with the whole team.`],
+        [`Queries and growth`, `Branded share, queries close to page one, and rising, falling, new and lost queries across two periods.`],
+        [`Traffic and CTAs`, `Channels, countries, cities and landing pages, plus sample, expert, buy and customization clicks by source.`],
+        [`Bot check`, `Flags near-zero engagement, data-centre locations and hourly spikes, with the pages they hit.`]
+      ],
+      trust: [`Search Console figures come from the same API and dates as Search Console; GA4 uses Active users, the metric GA4's own reports show.`,
+        `Lists go deeper than Google's screens: up to 50,000 rows instead of 1,000.`,
+        `Crawl stats are saved only after an automatic check that refresh plus discovery equals the total for every day.`,
+        `Read-only: nothing in Google can be changed from the dashboard.`]
+    },
+    {
+      id: 'xray', name: `Ranking X-Ray`, short: `Ranking X-Ray`, team: 'content', status: 'live',
+      url: 'https://ranking-analyser.vercel.app', host: 'ranking-analyser.vercel.app',
+      summary: `Takes a report page from brief to rankings: what to write, how it compares with competitors, and where it ranks every week.`,
+      problem: [`Before writing a report page, someone had to Google the keyword, open every competitor page and compare sections, tables and word counts by hand, then guess what was missing.`,
+        `After publishing, nobody could say why a competitor still ranked above us, and rankings were checked by hand, if at all.`],
+      steps: [
+        [`Content brief`, `Type a keyword. It reads Google's top 10 and six tracked competitors, then writes a skeleton in the Kings Research report format with the gaps to fill.`],
+        [`Write and check`, `Paste the draft to score it against the brief; the planner adds meta tags, FAQs and schema.`],
+        [`X-ray the live page`, `Our page is compared with each competitor's on 13 weighted factors, from content depth and schema to E-E-A-T and freshness.`],
+        [`Track every Monday`, `Each brief lands in a Google Sheet that re-checks our rank and every tracked competitor's, with the change since last week.`]
+      ],
+      features: [
+        [`What competitors miss`, `18 report sections, tables, key players, analyst byline, freshness and unanswered "People also ask" questions, checked on every competitor.`],
+        [`Figure check`, `Market size, forecast and CAGR are recomputed; competitor numbers that don't add up are flagged.`],
+        [`Our existing pages`, `Shows our pages already ranking for the keyword, so we don't compete with ourselves.`],
+        [`Search Console tools`, `A weekly hreflang report per language sitemap, bulk CSV metrics and index status.`]
+      ],
+      trust: [`Competitor pages that block us are marked blocked and can be pasted in, never silently skipped.`,
+        `The 13 factor weights are written down, so they can be questioned and tuned rather than taken on faith.`,
+        `Every brief is saved as a Google Doc and a row in the tracking sheet.`]
+    },
+    {
+      id: 'search', name: `Content Search`, short: `Content Search`, team: 'content', status: 'live',
+      url: 'https://byomkeshbakshi.vercel.app/', host: 'byomkeshbakshi.vercel.app',
+      summary: `Finds any word, character or piece of code on every page of our six sites, read live and matched character for character.`,
+      problem: [`Finding every em dash on a site, or, as Kings Research once needed, every page that wrote out "billion", meant opening pages one by one. Google's site: search ignores punctuation and can't see a non-breaking space.`,
+        `With six sites and thousands of pages each, a style fix or a renamed product could take days and still miss pages.`],
+      steps: [
+        [`Pick a site`, `Kings Research, MarTech360, IT Business Today, IT Digest, AITech365 or Read Magazine, or all six at once.`],
+        [`Type what to find`, `Exact text, all words or a pattern. One-click buttons insert characters that are hard to type: em dash, en dash, ellipsis, curly quotes, non-breaking space.`],
+        [`Choose where to look`, `Article text only, the whole page, or the raw HTML source.`],
+        [`Take the fix list`, `Every matching page with its match count, highlighted context and last-updated date. Copy the URLs or download a CSV.`]
+      ],
+      features: [
+        [`Style clean-up`, `Em dashes, double spaces, curly versus straight quotes, "billion" versus "Bn".`],
+        [`Stale content`, `Old forecast periods, last year's figures, renamed brands or products.`],
+        [`Writing tells and placeholders`, `"Delve", "lorem ipsum", "XX%" and other text that should never go live.`],
+        [`Code checks`, `Links to old domains, http:// or staging URLs, an old analytics tag, a stray noindex.`]
+      ],
+      trust: [`Matching is literal: nothing is stemmed, lowercased or thrown away, so a single character is a valid search.`,
+        `Pages are read live from the sitemap, so results show what is published right now.`,
+        `Pages that fail to load are counted and shown, not hidden.`]
+    },
+    {
+      id: 'redirect', name: `Redirect Mapper`, short: `Redirect Mapper`, team: 'site', status: 'live',
+      url: 'https://redirection-one.vercel.app/', host: 'redirection-one.vercel.app',
+      summary: `Matches every 404 to its closest live page and exports 301 redirects ready to publish.`,
+      problem: [`Deleted, moved or renamed pages leave 404s behind: 2,893 on IT Business Today alone. Each one throws away the links and rankings that page had earned and sends visitors to a dead end.`,
+        `Mapping them by hand meant opening every dead URL and searching the site for a replacement. The shortcut, sending everything to the homepage, is treated by Google as a soft 404, so the value is lost anyway.`],
+      steps: [
+        [`Give it the live site`, `Paste the sitemap URL; sitemap index files are followed automatically.`],
+        [`Give it the 404s`, `Upload Search Console's export (CSV or Excel) or paste a list. It finds the URL column on its own.`],
+        [`Review the matches`, `Each dead URL gets its closest live page, a 0 to 100 confidence score and two alternatives. Any row can be edited.`],
+        [`Export`, `An Excel file with colour-coded confidence, a CSV, or redirect rules ready to paste into Apache or Nginx.`]
+      ],
+      features: [
+        [`Matching that understands URLs`, `Exact slug first, then distinctive names like brands, products and companies, then word overlap.`],
+        [`URL clean-up`, `AMP paths, tracking tags, pagination and login-redirect wrappers are stripped before matching.`],
+        [`Listing pages`, `Tag and category URLs go to listing pages, not a random article.`],
+        [`Confidence bands`, `85 and above is safe to publish, 60 to 84 needs a skim, under 60 is checked by hand.`]
+      ],
+      trust: [`No row is left blank: with nothing close, it falls back to the nearest section page at zero confidence, so it's obvious.`,
+        `Matches that point to a different domain are flagged.`,
+        `Nothing is stored on the server; the file you download is the only copy.`]
+    },
+    {
+      id: 'scraper', name: `Website URL Scraper`, short: `URL Scraper`, team: 'site', status: 'live',
+      url: 'https://website-url-scraper.vercel.app/', host: 'website-url-scraper.vercel.app',
+      summary: `Pulls every URL from a site's sitemaps, with titles, descriptions, headings and in-article links, into one Excel file.`,
+      problem: [`Getting a full list of a site's pages, split by section and language, meant opening sitemap XML files and copy-pasting them into Excel.`,
+        `Checking titles, descriptions and headings meant opening every page or paying for a crawler whose free version stops at 500 URLs. Internal-link audits were guesswork, because menu and footer links drown out the ones inside the article.`],
+      steps: [
+        [`Start from a sitemap or a list`, `From a sitemap, sections (reports, blogs, press releases) and languages are detected; or paste any list of URLs.`],
+        [`Pick what to collect`, `Meta title, meta description, H1, H2, H3 and in-article internal links.`],
+        [`Let it read the pages`, `Pages are read in batches. Stop at any point and keep everything finished so far.`],
+        [`Download the Excel`, `One sheet per section and language, an HTTP status for every page, with filters and frozen headers.`]
+      ],
+      features: [
+        [`Site inventory`, `Every sitemap URL with last-modified date, change frequency and priority.`],
+        [`On-page data`, `Titles, descriptions and every heading, per page.`],
+        [`In-article links`, `Count and list per page, plus a sheet of every link with its anchor text; navigation, header, sidebar and footer excluded.`],
+        [`Any list of URLs`, `New reports, a 404 export or a single section, checked the same way.`]
+      ],
+      trust: [`Starts from the site's own sitemap, so nothing is guessed.`,
+        `Every page carries its HTTP status, so broken pages show up instead of leaving blank rows.`,
+        `Menu and footer removal is guarded, so it never strips the article itself.`]
+    },
+    {
+      id: 'interlinker', name: `KR Master Interlinker`, short: `Interlinker`, team: 'content', status: 'live',
+      url: 'https://kr-interlinker.vercel.app/', host: 'kr-interlinker.vercel.app',
+      summary: `Suggests the best internal links for any article from every live Kings Research page, so linking no longer depends on memory.`,
+      problem: [`Internal links were added from memory. Each analyst linked the reports, blogs and press releases they remembered or had worked on, out of thousands of live pages. Familiar pages were linked again and again; relevant ones never were.`,
+        `That knowledge lived in people's heads. A new team member took weeks to get up to pace, and when someone left, what they knew left with them. This tool makes linking a process the whole team shares.`],
+      steps: [
+        [`Load the live site`, `One click fetches every live report, blog and press release from the Kings Research sitemaps.`],
+        [`Paste the article`, `Choose which page types to link to and how many suggestions you want, from 10 to 25.`],
+        [`Get suggestions`, `A shortlist is built from the live pages by keyword; the AI picks the best fits and says why each one belongs.`],
+        [`Copy and paste`, `Copy one link or all of them as ready-to-paste HTML.`]
+      ],
+      features: [
+        [`The whole live site`, `Every report, blog and press release, counted by type, refreshed on each load.`],
+        [`Anchors from the article`, `Suggested anchor text is taken from the article itself, so it reads naturally.`],
+        [`A reason for each link`, `Every suggestion says why it fits, so an editor can accept or skip it quickly.`],
+        [`Same quality for everyone`, `A new team member links like the most experienced analyst from day one.`]
+      ],
+      trust: [`URLs come only from the live sitemap; the AI picks by number and can't invent or mistype a URL.`,
+        `Every anchor must appear word-for-word in the article, or it's dropped.`,
+        `A known sitemap fault that would produce 404 links is corrected automatically.`]
+    },
+    {
+      id: 'prospect', name: `Prospect Finder`, short: `Prospect Finder`, team: 'sales', status: 'testing',
+      url: 'https://docs.google.com/spreadsheets/d/1TffSiulC53EzTUtCJj89zmM2wUpVIse1qfaHqwnCEE8/edit', linkLabel: `See sample output`,
+      note: `In testing. The logic changes often, so it isn't hosted yet. The sample sheet needs a company Google account.`,
+      summary: `Finds companies with a fresh reason to buy research, picks the right people, and pairs each with a matching report and service.`,
+      problem: [`Prospect lists were bought or built by hand: names with no reason to reach out now, so outreach landed when companies had no current need.`,
+        `For every account, someone had to search the news, check the company could actually buy, match it to a relevant report and find the right person and email. That took hours per account.`],
+      steps: [
+        [`Scan the news`, `The last 90 days, for acquisitions, launches, new plants, market entry and expansion.`],
+        [`Check the company`, `Reads its own website and drops universities, non-profits, government, research competitors, tech and software firms, and existing customers.`],
+        [`Match a report and service`, `The nearest Kings Research market by similarity, and one of 16 services the news calls for, such as M&A Intelligence after an acquisition.`],
+        [`Rank`, `Scored on the type of news, how recent it is, company size and report fit, with a penalty for negative news.`],
+        [`Find the people`, `Leaders named on the company's own pages, with the quote as proof, and their email; at most two per parent company.`],
+        [`Hand over a sheet`, `Ranked rows in a Google Sheet with a "why they can buy" line, ready for the Cadence Engine.`]
+      ],
+      features: [
+        [`Buying signals`, `Each company comes with the headline, date and link that make now the right time.`],
+        [`Fit before spend`, `Non-fits are removed before any research is paid for; missing websites are found and verified by loading them.`],
+        [`Report and service match`, `Every row names the nearest report page and the service to offer.`],
+        [`Country rules`, `No email for Germany or Austria by default; caution flags where required.`]
+      ],
+      trust: [`Signals older than 90 days are ignored.`,
+        `Acquired companies are counted under their parent, so one account isn't contacted twice.`,
+        `The top of the ranked list is reviewed by a person before anything is sent.`]
+    },
+    {
+      id: 'cadence', name: `Cadence Engine`, short: `Cadence Engine`, team: 'sales', status: 'local',
+      url: 'cadence-engine.html', linkLabel: `How it works`,
+      note: `Runs on a team machine because it gets new rules and fixes almost daily. "How it works" opens the full interactive walkthrough in a new tab.`,
+      summary: `Turns a prospect list into personalised four-email outreach built from real Kings Research reports, with every sentence checked before it's marked Ready.`,
+      problem: [`Personalised outreach meant researching each prospect, finding a relevant Kings Research report and writing four emails by hand. Quality depended on who wrote it and how late in the day it was.`,
+        `Emails also went to people who don't buy research, and AI-written drafts can invent a fact, name the wrong company or offer something for free.`],
+      steps: [
+        [`Read the sheet and the websites`, `What each company sells and what it's really called. Sites that block us are described in one line instead.`],
+        [`Free checks`, `Wrong titles, non-profits, acquired companies, spam websites and names that don't match the email are stopped before anything is spent.`],
+        [`Buyer check`, `Buyers are separated from influencers; at most two contacts per account.`],
+        [`Match a report`, `The company is matched to the closest of about 2,900 live report pages, or to a service when its news calls for one.`],
+        [`Write four emails`, `Built from the report's own findings; the closing question of each email is built by code, so nothing is promised that the match can't deliver.`],
+        [`Check, then Ready`, `Rule checks, a fact check against the report, website and news, a quality review and a final read. Only then is the row marked Ready.`]
+      ],
+      features: [
+        [`Held with a reason`, `A row that fails is held with the rule, the evidence and the exact text, so it can be fixed fast.`],
+        [`Learns from reviews`, `Reviewers mark rows ok, wrong hold or wrong ready; every past mistake becomes a test the next version must pass.`],
+        [`Cost under control`, `About $0.60 to $0.80 per 1,000 prospects, with a hard cap: over it, the rest of the run is held.`],
+        [`Real news openers`, `Recent company news is used only when it's about this company and works without numbers.`]
+      ],
+      trust: [`Nothing is marked Ready without a subject and all four emails written and read back from the sheet.`,
+        `Free checks run before any paid step, so money is only spent on people who could receive a cadence.`,
+        `The engine never sends: only the sending tool does, and only for Ready rows.`]
+    }
+  ];
+  const byId = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
+
+  const JOBS = [
+    { job: `See how a site is doing`, tool: 'dashboard', before: [`Open Search Console, then GA4, then the sitemaps`, `Export each and line the dates up in a sheet`, `Screenshot it for the team, already days old`], now: `One link for every property, the same dates everywhere, and a Source button on every number.` },
+    { job: `Plan a new report page`, tool: 'xray', before: [`Google the keyword and open every competitor page`, `Compare sections, tables and word counts by hand`, `Guess what to add, then check ranks manually`], now: `A brief with the skeleton, competitor gaps and targets, then weekly rank tracking in a sheet.` },
+    { job: `Find every em dash on the site`, tool: 'search', before: [`Try a Google site: search, which ignores punctuation`, `Open pages one by one and use Ctrl+F`, `Lose track of which pages were checked`], now: `Every page with that exact character, highlighted in context, in one run and one CSV.` },
+    { job: `Fix thousands of 404s`, tool: 'redirect', before: [`Open each dead URL and guess what it was`, `Search the site for a replacement, one at a time`, `Retype the list into the server config`], now: `Every 404 matched to its closest live page with a confidence score, exported as ready-to-paste redirect rules.` },
+    { job: `Audit titles and links in a section`, tool: 'scraper', before: [`Open the sitemap XML and copy the URLs out`, `Visit each page to read its title and headings`, `Count links by eye, menus included`], now: `One Excel per section with titles, descriptions, headings, status codes and only the in-article links.` },
+    { job: `Add internal links to an article`, tool: 'interlinker', before: [`Link the reports you happen to remember`, `Search the site for anything else`, `Type URLs by hand and hope they still work`], now: `10 to 25 suggestions from every live page, with anchors taken from the article, copied as HTML.` },
+    { job: `Find companies worth contacting`, tool: 'prospect', before: [`Work from a bought list with no reason to call`, `Search the news for each company`, `Look up the right person and their email`], now: `A ranked sheet of companies with fresh news, the matching report and service, and the people to contact.` },
+    { job: `Write outreach for 1,000 prospects`, tool: 'cadence', before: [`Research each prospect and find a relevant report`, `Write four emails per person by hand`, `Re-read everything for wrong facts and names`], now: `A checked four-email cadence per prospect, built from a real report page, or held with the reason it isn't safe.` }
+  ];
+
+  const isExternal = (t) => /^https?:/.test(t.url);
+  const linkFor = (t, cls) => `<a class="btn ${cls || ''}" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.linkLabel || 'Open tool')} ${EXT}</a>`;
+  const pill = (t) => `<span class="pill ${STATUS[t.status].cls}" data-pill="${t.id}"><i></i>${STATUS[t.status].label}</span>`;
+
+  /* ---------- job picker ---------- */
+  const jobList = document.getElementById('jobList');
+  const answer = document.getElementById('answer');
+  jobList.innerHTML = JOBS.map((j, i) => `<li><button type="button" data-job="${i}" aria-pressed="false">${esc(j.job)}<small>${esc(byId[j.tool].short)}</small></button></li>`).join('');
+  function showJob(i, instant) {
+    const j = JOBS[i], t = byId[j.tool];
+    jobList.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.job) === i)));
+    const render = () => {
+      answer.innerHTML = `
+        <div class="before"><h3>Before</h3><ol>${j.before.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></div>
+        <div class="now"><h3>Now</h3><div class="tname">${esc(t.name)}</div><p>${esc(j.now)}</p>
+          <div class="btns"><button class="btn ghost" type="button" data-go="${t.id}">See how it works</button>${linkFor(t)}</div></div>`;
+      answer.classList.remove('swap');
+    };
+    if (instant) return render();
+    answer.classList.add('swap');
+    setTimeout(render, 160);
+  }
+  jobList.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) showJob(Number(b.dataset.job)); });
+  jobList.addEventListener('keydown', (e) => {
+    if (!['ArrowDown', 'ArrowUp'].includes(e.key)) return;
+    const btns = [...jobList.querySelectorAll('button')];
+    const at = btns.indexOf(document.activeElement);
+    if (at < 0) return;
+    e.preventDefault();
+    const next = (at + (e.key === 'ArrowDown' ? 1 : -1) + btns.length) % btns.length;
+    btns[next].focus(); showJob(next);
+  });
+  showJob(0, true);
+
+  /* ---------- tool cards ---------- */
+  const TABS = [['problem', `The problem`], ['how', `How it works`], ['what', `What it covers`], ['trust', `Why trust it`]];
+  const toolList = document.getElementById('toolList');
+  function panelHtml(t, tab) {
+    if (tab === 'problem') return t.problem.map((p) => `<p>${esc(p)}</p>`).join('');
+    if (tab === 'how') return `<ol class="steps">${t.steps.map(([a, b]) => `<li><b>${esc(a)}</b><span>${esc(b)}</span></li>`).join('')}</ol>`;
+    if (tab === 'what') return `<dl class="feats">${t.features.map(([a, b]) => `<div><dt>${esc(a)}</dt><dd>${esc(b)}</dd></div>`).join('')}</dl>`;
+    return `<ul class="trust">${t.trust.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>`;
+  }
+  toolList.innerHTML = TOOLS.map((t) => `
+    <article class="tool" id="${t.id}" data-team="${t.team}">
+      <aside>
+        <div class="team">${esc(TEAMS[t.team])}</div>
+        <h3>${esc(t.name)}</h3>
+        ${pill(t)}
+        <p>${esc(t.summary)}</p>
+        <div class="btns">${linkFor(t)}</div>
+        ${t.note ? `<p class="note">${esc(t.note)}</p>` : ''}
+      </aside>
+      <div>
+        <div class="tabs" role="tablist" aria-label="${esc(t.name)}">
+          ${TABS.map(([k, label], i) => `<button class="tab" role="tab" id="${t.id}-tab-${k}" aria-controls="${t.id}-panel" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}" data-tab="${k}">${label}</button>`).join('')}
+        </div>
+        <div class="panel" id="${t.id}-panel" role="tabpanel" aria-labelledby="${t.id}-tab-problem">${panelHtml(t, 'problem')}</div>
+      </div>
+    </article>`).join('');
+
+  function openTab(card, key, focus) {
+    const t = byId[card.id];
+    const tabs = [...card.querySelectorAll('.tab')];
+    tabs.forEach((b) => { const on = b.dataset.tab === key; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
+    const panel = card.querySelector('.panel');
+    panel.setAttribute('aria-labelledby', `${t.id}-tab-${key}`);
+    panel.innerHTML = panelHtml(t, key);
+    panel.style.animation = 'none'; void panel.offsetWidth; panel.style.animation = '';
+  }
+  toolList.addEventListener('click', (e) => {
+    const b = e.target.closest('.tab'); if (!b) return;
+    openTab(b.closest('.tool'), b.dataset.tab);
+  });
+  toolList.addEventListener('keydown', (e) => {
+    const b = e.target.closest('.tab'); if (!b || !['ArrowRight', 'ArrowLeft'].includes(e.key)) return;
+    const tabs = [...b.parentElement.children];
+    const i = tabs.indexOf(b), n = (i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    openTab(b.closest('.tool'), tabs[n].dataset.tab, true);
+  });
+
+  /* ---------- filters ---------- */
+  const filters = document.getElementById('filters');
+  const FILTERS = [['all', `All eight`], ['site', TEAMS.site], ['content', TEAMS.content], ['sales', TEAMS.sales]];
+  filters.innerHTML = FILTERS.map(([k, l], i) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${i === 0}">${esc(l)}</button>`).join('');
+  function setFilter(k) {
+    filters.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.f === k)));
+    toolList.querySelectorAll('.tool').forEach((card) => { card.hidden = !(k === 'all' || card.dataset.team === k); });
+  }
+  filters.addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) setFilter(c.dataset.f); });
+
+  /* ---------- jump to a tool ---------- */
+  function goTo(id, tab) {
+    const card = document.getElementById(id); if (!card) return;
+    if (card.hidden) setFilter('all');
+    openTab(card, tab || 'how');
+    card.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+    history.replaceState(null, '', '#' + id);
+  }
+  document.addEventListener('click', (e) => { const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); goTo(g.dataset.go); } });
+  if (location.hash && byId[location.hash.slice(1)]) setTimeout(() => goTo(location.hash.slice(1), 'problem'), 50);
+
+  /* ---------- live status ---------- */
+  const boardBody = document.getElementById('boardBody');
+  const boardSummary = document.getElementById('boardSummary');
+  boardBody.innerHTML = TOOLS.map((t) => `
+    <tr>
+      <td class="t"><a href="#${t.id}" data-go="${t.id}">${esc(t.name)}</a>${t.host ? `<span class="host">${esc(t.host)}</span>` : ''}</td>
+      <td>${esc(TEAMS[t.team])}</td>
+      <td>${esc(STATUS[t.status].where)}</td>
+      <td><span class="pill ${STATUS[t.status].cls}" id="st-${t.id}"><i></i>${STATUS[t.status].label}</span><span class="ms" id="ms-${t.id}"></span></td>
+    </tr>`).join('');
+
+  const timeIST = () => new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+  async function ping(t) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9000);
+    const t0 = performance.now();
+    try {
+      await fetch(t.url, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
+      return { ok: true, ms: Math.round(performance.now() - t0) };
+    } catch (err) {
+      return { ok: false };
+    } finally { clearTimeout(timer); }
+  }
+  async function checkAll() {
+    const live = TOOLS.filter((t) => t.status === 'live');
+    boardSummary.textContent = `Checking ${live.length} online tools…`;
+    live.forEach((t) => {
+      const el = document.getElementById('st-' + t.id);
+      el.className = 'pill s-live checking'; el.innerHTML = '<i></i>Checking';
+      document.getElementById('ms-' + t.id).textContent = '';
+    });
+    const results = await Promise.all(live.map(async (t) => [t, await ping(t)]));
+    let up = 0;
+    results.forEach(([t, r]) => {
+      const el = document.getElementById('st-' + t.id);
+      const ms = document.getElementById('ms-' + t.id);
+      if (r.ok) { up++; el.className = 'pill s-live'; el.innerHTML = '<i></i>Online'; ms.textContent = `${r.ms} ms`; }
+      else { el.className = 'pill s-down'; el.innerHTML = '<i></i>Not reachable'; ms.textContent = ''; }
+      const card = document.querySelector(`[data-pill="${t.id}"]`);
+      if (card) { card.className = 'pill ' + (r.ok ? 's-live' : 's-down'); card.innerHTML = `<i></i>${r.ok ? 'Live online' : 'Not reachable right now'}`; }
+    });
+    boardSummary.textContent = `${up} of ${live.length} online tools answered just now (${timeIST()} IST).` + (up < live.length ? ` A network filter or a cold start can cause a miss; try "Check again".` : '');
+  }
+  document.getElementById('recheck').addEventListener('click', checkAll);
+  checkAll();
+
+  /* ---------- clock ---------- */
+  const clock = document.getElementById('clock');
+  const tick = () => { clock.textContent = `${timeIST()} IST`; };
+  tick(); setInterval(tick, 15000);
+})();
+</script>
+</body>
+</html>
