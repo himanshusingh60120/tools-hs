@@ -1,0 +1,1413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the Kings Research cadence engine works (v8.39)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #EDF0F3; --panel: #F8F9FB; --ink: #17212B; --muted: #586674; --rule: #C9D1DA;
+    --ready: #0E7C66; --hold: #B7791F; --reject: #B4475A; --page: #1F6FB2; --model: #5B4FCF; --code: #4A5866; --flow: #17212B;
+    --radius-s: 6px; --radius-l: 14px;
+    --serif: "Literata", Georgia, serif; --sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 var(--sans); }
+  :focus-visible { outline: 3px solid var(--page); outline-offset: 2px; border-radius: 4px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.2; margin: 0; }
+  h1 { font-size: clamp(2rem, 4.4vw, 3.2rem); letter-spacing: -0.01em; max-width: 20ch; }
+  h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); margin-bottom: 0.4em; }
+  h3 { font-size: 1.15rem; }
+  p { margin: 0 0 1em; max-width: 68ch; }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: 60ch; }
+  section { padding: 64px 0; border-top: 1px solid var(--rule); }
+  header { padding: 56px 0 24px; }
+  .kicker { font-weight: 600; color: var(--muted); margin-bottom: 12px; }
+  .small { font-size: 0.9rem; color: var(--muted); }
+  .jump { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 4px; font-weight: 600; font-size: 0.92rem; }
+  .jump a { color: var(--ink); text-underline-offset: 3px; }
+  .btn { font: 600 0.95rem var(--sans); border-radius: var(--radius-s); padding: 9px 14px; cursor: pointer; border: 1px solid var(--ink); background: var(--ink); color: #fff; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.82rem; font-weight: 600; color: #fff; white-space: nowrap; }
+  .t-go { background: var(--ink); } .t-ready { background: var(--ready); } .t-hold { background: var(--hold); } .t-reject { background: var(--reject); } .t-fix { background: var(--model); }
+
+  /* ---------- the run (step view) ---------- */
+  .run { margin-top: 28px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-l); padding: 20px 20px 16px; }
+  .run-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .run-count { font-family: var(--serif); font-size: 1.05rem; }
+  .run-count strong { font-size: 1.6rem; color: var(--ready); font-weight: 700; }
+  .run-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .viewswitch { display: inline-flex; border: 1px solid var(--ink); border-radius: var(--radius-s); overflow: hidden; }
+  .viewswitch button { font: 600 0.95rem var(--sans); padding: 9px 14px; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
+  .viewswitch button + button { border-left: 1px solid var(--ink); }
+  .viewswitch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .hint { font-size: 0.9rem; color: var(--muted); margin: 0 0 10px; }
+  .scroller { overflow-x: auto; padding-bottom: 6px; }
+  .sieve { position: relative; min-width: 940px; height: 380px; }
+  .gate { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--rule); cursor: pointer; transition: background-color 200ms ease; }
+  .gate:hover { background: rgba(23, 33, 43, 0.035); }
+  .gate.active { border-left: 2px solid var(--ink); background: rgba(23, 33, 43, 0.045); }
+  .gate-label { position: absolute; top: 0; left: 2px; right: 2px; font: 600 0.78rem/1.25 var(--sans); color: var(--muted); text-align: left; background: none; border: 0; padding: 2px 4px; cursor: pointer; border-radius: 4px; }
+  .gate-label:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .gate.active .gate-label { color: var(--ink); }
+  .bin-line { position: absolute; left: 0; right: 0; top: 228px; border-top: 1px solid var(--rule); pointer-events: none; }
+  .bin-note { position: absolute; left: 0; top: 234px; font-size: 0.78rem; color: var(--muted); pointer-events: none; }
+  .dot { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--flow); top: 0; left: 0; z-index: 2; cursor: pointer; border: 0; padding: 0;
+         transition: transform 650ms cubic-bezier(.2,.7,.2,1), background-color 400ms ease, box-shadow 200ms ease; will-change: transform; }
+  .dot:hover { box-shadow: 0 0 0 3px rgba(23, 33, 43, 0.18); }
+  .dot.ready { background: var(--ready); } .dot.hold { background: var(--hold); } .dot.reject { background: var(--reject); }
+  .dot.described { background: var(--model); }
+  .dot.picked { box-shadow: 0 0 0 3px var(--ink); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+  .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .lg-flow::before { background: var(--flow); } .lg-ready::before { background: var(--ready); } .lg-hold::before { background: var(--hold); }
+  .lg-reject::before { background: var(--reject); } .lg-described::before { background: var(--model); }
+
+  /* ---------- how a step decided ---------- */
+  .decide { margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 18px; }
+  .decide-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 14px; }
+  .decide-head h3 { font-size: 1.35rem; }
+  .q { color: var(--muted); }
+  .decide-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: start; transition: opacity 200ms ease; }
+  .decide-grid.swap { opacity: 0; }
+  .rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .rules li { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; padding: 9px 12px; border: 1px solid var(--rule); border-radius: var(--radius-s); background: #fff; font-size: 0.95rem; }
+  .examples { display: grid; gap: 8px; }
+  .ex { border: 1px solid var(--rule); border-radius: var(--radius-s); background: #fff; }
+  .ex button { width: 100%; display: flex; justify-content: space-between; gap: 12px; align-items: center; text-align: left; background: none; border: 0; padding: 10px 12px; cursor: pointer; font: 600 0.95rem var(--sans); color: var(--ink); }
+  .ex button span.who small { font-weight: 400; color: var(--muted); }
+  .ex.open { border-color: var(--ink); }
+  .trace { display: none; padding: 0 12px 12px; }
+  .ex.open .trace { display: block; }
+  .trace dl { display: grid; grid-template-columns: 150px 1fr; gap: 4px 14px; margin: 0; font-size: 0.92rem; }
+  .trace dt { color: var(--muted); } .trace dd { margin: 0; }
+  .sub { font-weight: 600; font-size: 0.95rem; margin: 0 0 8px; }
+
+  /* ---------- prospect flow: the flowchart ---------- */
+  .fpick { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .fpick button { font: 600 0.85rem var(--sans); border: 1px solid var(--rule); background: #fff; border-radius: 999px; padding: 5px 11px; cursor: pointer; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
+  .fpick button i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .fpick button:hover { border-color: var(--ink); }
+  .fpick button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .follow-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 14px; }
+  .follow-head h3 { font-size: 1.35rem; }
+  .follow-actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+  .follow-grid { display: grid; grid-template-columns: 790px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .chartwrap { overflow-x: auto; }
+  .fchart { position: relative; width: 780px; }
+  .fchart svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .fchart .spine { stroke: var(--ink); stroke-width: 2; fill: none; }
+  .fchart .spine.off { stroke: var(--rule); stroke-dasharray: 5 5; }
+  .fchart .branch { stroke: var(--rule); stroke-width: 2; fill: none; stroke-dasharray: 5 5; transition: stroke 300ms ease; }
+  .fchart .branch.on { stroke: var(--hold); stroke-dasharray: none; }
+  .fchart .branch.on.reject { stroke: var(--reject); }
+  .fchart .arrow { fill: var(--rule); transition: fill 300ms ease; }
+  .fchart .arrow.on { fill: var(--hold); } .fchart .arrow.on.reject { fill: var(--reject); }
+  .fchart .loop { stroke: var(--model); stroke-width: 2; fill: none; opacity: 0; transition: opacity 300ms ease; }
+  .fchart .loop.on { opacity: 1; }
+  .node { position: absolute; left: 40px; width: 300px; height: 68px; background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 8px 12px 8px 50px; display: flex; flex-direction: column; justify-content: center; cursor: pointer; transition: border-color 250ms ease, box-shadow 250ms ease, opacity 300ms ease; }
+  .node:hover { border-color: var(--ink); }
+  .node .num { position: absolute; left: 12px; top: 20px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; color: #fff; background: var(--flow); transition: background-color 250ms ease, border-radius 250ms ease; }
+  .node .ntitle { font-weight: 600; font-size: 0.95rem; line-height: 1.2; }
+  .node .nout { font-size: 0.84rem; color: var(--muted); line-height: 1.25; min-height: 1.1em; }
+  .node.s-fix .num { background: var(--model); border-radius: 7px; }
+  .node.s-hold .num { background: var(--hold); border-radius: 3px; } .node.s-hold { border-color: var(--hold); }
+  .node.s-reject .num { background: var(--reject); } .node.s-reject { border-color: var(--reject); }
+  .node.s-ready .num { background: var(--ready); } .node.s-ready { border-color: var(--ready); }
+  .node.s-skip { opacity: 0.45; border-style: dashed; } .node.s-skip .num { background: #AEB7C1; }
+  .node.on { box-shadow: 0 0 0 3px rgba(23, 33, 43, 0.18); border-color: var(--ink); }
+  .outbox { position: absolute; left: 430px; width: 330px; height: 68px; border: 1px dashed var(--rule); border-radius: 10px; padding: 8px 12px; font-size: 0.84rem; line-height: 1.25; color: var(--muted); display: flex; flex-direction: column; justify-content: center; transition: border-color 300ms ease, background-color 300ms ease, color 300ms ease; }
+  .outbox .otitle { font-weight: 700; font-size: 0.86rem; }
+  .outbox.on { background: #F6EEDF; border-style: solid; border-color: var(--hold); color: var(--ink); }
+  .outbox.on .otitle { color: var(--hold); }
+  .outbox.on.reject { background: #F4E6E9; border-color: var(--reject); } .outbox.on.reject .otitle { color: var(--reject); }
+  .outbox.endbox { border-style: solid; border-color: var(--ready); color: var(--ready); background: #E3F1EC; }
+  .outbox.endbox.on { box-shadow: 0 0 0 3px rgba(14, 124, 102, 0.25); }
+  .token { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: var(--flow); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--ink); left: 0; top: 0; z-index: 5; transition: transform 550ms cubic-bezier(.2,.7,.2,1), background-color 300ms ease, box-shadow 300ms ease; will-change: transform; pointer-events: none; }
+  .token.fix { background: var(--model); box-shadow: 0 0 0 2px var(--model); }
+  .token.hold { background: var(--hold); box-shadow: 0 0 0 2px var(--hold); }
+  .token.reject { background: var(--reject); box-shadow: 0 0 0 2px var(--reject); }
+  .token.ready { background: var(--ready); box-shadow: 0 0 0 2px var(--ready); }
+  .fnote { background: #fff; border: 1px solid var(--rule); border-radius: var(--radius-l); padding: 18px 20px; position: sticky; top: 16px; }
+  .fnote h3 { margin-bottom: 6px; }
+  .fnote .src { font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; }
+  .fkey { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: var(--muted); margin: 10px 0 0; }
+  .fkey i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+
+  /* ---------- blocked websites ---------- */
+  .ladder { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-top: 22px; }
+  .rung { position: relative; padding: 16px 18px 18px; border: 1px solid var(--rule); background: var(--panel); }
+  .rung:first-child { border-radius: var(--radius-l) 0 0 var(--radius-l); }
+  .rung:last-child { border-radius: 0 var(--radius-l) var(--radius-l) 0; }
+  .rung + .rung { border-left: 0; }
+  .rung .num { font-family: var(--serif); font-weight: 700; color: var(--model); font-size: 1.6rem; line-height: 1; }
+  .rung h3 { margin: 8px 0 6px; font-size: 1.05rem; }
+  .rung p { font-size: 0.92rem; color: var(--muted); margin: 0 0 10px; }
+  .rung .cost { font-weight: 700; font-size: 0.92rem; }
+  .rung.end .num { color: var(--hold); }
+  .rung .bar2 { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--model); transform-origin: left; transform: scaleX(0); transition: transform 900ms cubic-bezier(.2,.7,.2,1); }
+  .rung.end .bar2 { background: var(--hold); }
+  .ladder.live .rung .bar2 { transform: scaleX(1); }
+  .ladder.live .rung:nth-child(2) .bar2 { transition-delay: 250ms; }
+  .ladder.live .rung:nth-child(3) .bar2 { transition-delay: 500ms; }
+  .ladder.live .rung:nth-child(4) .bar2 { transition-delay: 750ms; }
+
+  /* ---------- steps ---------- */
+  .steps { display: grid; grid-template-columns: 300px 1fr; gap: 24px; margin-top: 24px; align-items: start; }
+  .step-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .step-list button { width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius-s); font: 500 0.98rem/1.35 var(--sans); color: var(--ink); padding: 9px 12px; cursor: pointer; display: flex; gap: 10px; }
+  .step-list button .n { font-family: var(--serif); color: var(--muted); min-width: 1.6em; }
+  .step-list button:hover { background: #E2E7EC; }
+  .step-list button[aria-current="step"] { background: var(--ink); color: #fff; }
+  .step-list button[aria-current="step"] .n { color: #C9D1DA; }
+  .detail { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-l); padding: 24px 26px; min-height: 420px; }
+  .detail h3 { font-size: 1.45rem; margin-bottom: 6px; }
+  .detail .who { color: var(--muted); font-size: 0.92rem; margin-bottom: 16px; }
+  .checks { margin: 10px 0 0; padding-left: 1.1em; }
+  .checks li { margin: 4px 0; max-width: 64ch; }
+  .holds { margin-top: 14px; padding: 10px 12px; border-left: 3px solid var(--hold); background: #F6EEDF; border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.95rem; }
+  .holds.none { border-left-color: var(--ready); background: #E3F1EC; }
+  .step-nav { display: flex; gap: 8px; margin-top: 18px; }
+  .detail-body { transition: opacity 220ms ease; }
+  .detail-body.swap { opacity: 0; }
+
+  /* ---------- anatomy ---------- */
+  .anatomy { display: grid; grid-template-columns: 1fr 320px; gap: 24px; margin-top: 20px; align-items: start; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tab { font: 600 0.92rem var(--sans); background: transparent; border: 1px solid var(--rule); border-radius: var(--radius-s); padding: 7px 14px; cursor: pointer; color: var(--ink); }
+  .tab[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .email { background: #fff; border: 1px solid var(--rule); border-radius: var(--radius-l); padding: 22px 24px; font-size: 1rem; line-height: 1.65; }
+  .email .subj { font-weight: 600; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+  .email p { margin: 0 0 0.9em; max-width: none; }
+  .seg { cursor: pointer; border-radius: 3px; padding: 1px 2px; transition: background-color 200ms ease, box-shadow 200ms ease; }
+  .show .seg.page { box-shadow: inset 0 -2px 0 var(--page); background: #E4EEF8; }
+  .show .seg.model { box-shadow: inset 0 -2px 0 var(--model); background: #ECEAFB; }
+  .show .seg.code { box-shadow: inset 0 -2px 0 var(--code); background: #E7EAEE; }
+  .seg.picked { outline: 2px solid var(--ink); }
+  .keyline { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.88rem; margin: 10px 0 0; color: var(--muted); }
+  .keyline i { display: inline-block; width: 18px; height: 6px; border-radius: 3px; margin-right: 6px; vertical-align: 2px; }
+  .note { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-l); padding: 18px 20px; position: sticky; top: 16px; }
+  .note h3 { margin-bottom: 6px; } .note .src { font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.92rem; cursor: pointer; margin-left: auto; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--ink); }
+
+  /* ---------- closing lines (v8.39) ---------- */
+  .cta-chain { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 22px 0 14px; position: relative; }
+  .cta-node { position: relative; background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px 12px 46px; min-height: 92px; transition: border-color 300ms ease, box-shadow 300ms ease; }
+  .cta-node .num { position: absolute; left: 12px; top: 14px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.82rem; color: #fff; background: var(--flow); transition: background-color 300ms ease; }
+  .cta-node .t { font-weight: 600; font-size: 0.92rem; line-height: 1.2; }
+  .cta-node .v { font-size: 0.86rem; color: var(--muted); line-height: 1.3; margin-top: 4px; min-height: 2.6em; transition: opacity 250ms ease; }
+  .cta-node.on { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(23, 33, 43, 0.18); }
+  .cta-node.on .num, .cta-node.done .num { background: var(--ready); }
+  .cta-node.dim .v { opacity: 0.35; }
+  .cta-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+  .cta-pick button { font: 600 0.85rem var(--sans); border: 1px solid var(--rule); background: #fff; border-radius: 999px; padding: 5px 11px; cursor: pointer; color: var(--ink); }
+  .cta-pick button:hover { border-color: var(--ink); }
+  .cta-pick button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .cta-mails { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+  .cta-mail { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-s); padding: 12px 14px; font-size: 0.9rem; line-height: 1.45; opacity: 0; transform: translateY(6px); transition: opacity 350ms ease, transform 350ms ease; }
+  .cta-mail.on { opacity: 1; transform: none; }
+  .cta-mail b { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  .cta-mail .pat { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 8px; border-top: 1px dashed var(--rule); padding-top: 6px; }
+  .cta-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 28px 0 12px; }
+  .cta-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .cta-table th, .cta-table td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .cta-table th { font-weight: 600; color: var(--muted); }
+  .cta-table td:first-child { white-space: nowrap; font-weight: 600; }
+  .cta-note { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--model); background: #ECEAFB; border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.92rem; }
+  .cta-note.warn { border-left-color: var(--hold); background: #F6EEDF; }
+
+  /* ---------- rails, cases, statuses, cost ---------- */
+  .rails { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 40px; margin-top: 20px; }
+  .rail h3 { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); }
+  .rail dl { margin: 0; } .rail dt { font-weight: 600; margin-top: 10px; } .rail dd { margin: 2px 0 0; color: var(--muted); font-size: 0.95rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 8px; }
+  .chip { font: 600 0.9rem var(--sans); border: 1px solid var(--rule); background: transparent; border-radius: 999px; padding: 6px 13px; cursor: pointer; color: var(--ink); }
+  .chip:hover { border-color: var(--ink); }
+  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .chip .cnt { font-weight: 400; opacity: 0.75; margin-left: 4px; }
+  .cases { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
+  .case { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-s); padding: 14px 16px; }
+  .case .top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+  .case h3 { font-size: 1.02rem; }
+  .case .ver { font-size: 0.78rem; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .case .ver.fp { color: var(--model); }
+  .case .cat { font-size: 0.78rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .case dl { display: grid; grid-template-columns: 74px 1fr; gap: 4px 10px; margin: 0; font-size: 0.92rem; }
+  .case dt { color: var(--muted); font-weight: 600; } .case dd { margin: 0; }
+  .status-row { display: grid; grid-template-columns: 160px 1fr; gap: 6px 20px; margin-top: 16px; }
+  .p-ready { background: var(--ready); } .p-hold { background: var(--hold); } .p-reject { background: var(--reject); } .p-nf { background: #8A5C6A; } .p-sent { background: transparent; color: var(--ink); border: 1px dashed var(--ink); }
+  .cost { display: grid; grid-template-columns: 340px 1fr; gap: 28px; margin-top: 20px; align-items: start; }
+  .controls { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-l); padding: 20px; }
+  .controls label { display: block; font-weight: 600; margin: 4px 0; }
+  .controls output { font-family: var(--serif); font-weight: 700; float: right; }
+  .controls input[type=range] { width: 100%; accent-color: var(--ink); margin-bottom: 14px; }
+  .totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .total { border-top: 2px solid var(--ink); padding-top: 10px; }
+  .total b { display: block; font-family: var(--serif); font-size: clamp(1.6rem, 3vw, 2.3rem); line-height: 1.1; }
+  .total span { font-size: 0.88rem; color: var(--muted); }
+  .total.over b { color: var(--reject); } .total.under b { color: var(--ready); }
+  table.prices { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 0.95rem; }
+  .prices th, .prices td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .prices th { font-weight: 600; color: var(--muted); }
+  .prices td:last-child, .prices th:last-child { text-align: right; white-space: nowrap; }
+  footer { padding: 40px 0 60px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
+
+  @media (max-width: 860px) {
+    .steps, .anatomy, .cost, .decide-grid, .follow-grid { grid-template-columns: 1fr; }
+    .note, .fnote { position: static; }
+    .rails, .cases { grid-template-columns: 1fr; }
+    .ladder { grid-template-columns: 1fr 1fr; }
+    .cta-chain, .cta-mails { grid-template-columns: 1fr 1fr; }
+    .rung, .rung + .rung { border: 1px solid var(--rule); border-radius: var(--radius-s) !important; margin: 0 6px 6px 0; }
+    .totals { grid-template-columns: 1fr 1fr; }
+    .status-row { grid-template-columns: 1fr; }
+    .trace dl { grid-template-columns: 1fr; }
+    .follow-actions { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dot, .detail-body, .seg, .decide-grid, .gate, .rung .bar2, .token, .node, .outbox, .fchart .branch, .fchart .loop, .cta-node, .cta-mail { transition: none !important; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <div class="kicker">Kings Research cadence engine, v8.39</div>
+  <h1>From a prospect list to four emails that sell the research itself</h1>
+  <p class="lede" style="margin-top:18px">Every row in the sheet passes through ten steps. People who are not a fit, and companies that are not who the sheet says they are, are stopped early and for free. The ones who reach writing get emails built from a real Kings Research report page or offering, every sentence is checked before the row is marked Ready, and every email closes on a question built from the research that was matched, not on a request for a call.</p>
+  <nav class="jump" aria-label="On this page">
+    <a href="#steps">The ten steps</a><a href="#run" id="jumpFlow">Follow a prospect end to end</a><a href="#anatomy">Where each sentence comes from</a>
+    <a href="#cta">Closing lines</a><a href="#rails">Guard rails</a><a href="#robust">Cases handled</a><a href="#cost">Cost</a>
+  </nav>
+
+  <div class="run" id="run" aria-label="An example run, and real prospects followed end to end">
+    <div class="run-head">
+      <div class="run-count" id="runCount" aria-live="polite"><strong>100</strong> prospects in the run</div>
+      <div class="run-actions">
+        <div class="viewswitch" role="group" aria-label="How to view the run">
+          <button type="button" id="vSteps" aria-pressed="true">Step view</button>
+          <button type="button" id="vFlow" aria-pressed="false">Prospect flow</button>
+        </div>
+        <button class="btn ghost" id="replay" type="button">Replay the run</button>
+      </div>
+    </div>
+
+    <div id="stepView">
+      <p class="hint">Click any step, or any dot in a pile, to see how the tool decided. Switch to <b>Prospect flow</b> to follow a real prospect through the flowchart.</p>
+      <div class="scroller"><div class="sieve" id="sieve"></div></div>
+      <div class="legend" aria-hidden="true">
+        <span class="lg-flow">still in the run</span><span class="lg-described">website blocked us, described by ChatGPT</span>
+        <span class="lg-reject">rejected or not a fit</span><span class="lg-hold">held, with a reason</span><span class="lg-ready">Ready</span>
+      </div>
+      <div class="decide" id="decide" aria-live="polite">
+        <div class="decide-head"><h3 id="dTitle"></h3><span class="q" id="dQ"></span></div>
+        <div class="decide-grid" id="dGrid">
+          <div><p class="sub">How it decides</p><ul class="rules" id="dRules"></ul></div>
+          <div><p class="sub">Real rows from the October runs</p><div class="examples" id="dEx"></div></div>
+        </div>
+      </div>
+      <p class="small" style="margin:14px 0 0">A run of 100 prospects, shaped like the fifth run of 29 October under the fix pack 5 rules. Purple dots are companies whose website refused our reader and that were described instead, so they carry on like everyone else.</p>
+    </div>
+
+    <div id="flowView" hidden>
+      <p class="hint">Pick a real prospect from the October runs and press <b>Play</b>. The marker moves down the flowchart one step at a time: a purple loop means code caught and corrected something and the prospect carried on; a branch to the right means it was stopped there, with the reason in the box.</p>
+      <div class="fpick" id="fpick" role="group" aria-label="Pick a prospect"></div>
+      <div class="follow-head">
+        <h3 id="fName"></h3><span class="q" id="fMeta"></span>
+        <div class="follow-actions">
+          <button class="btn ghost" id="fPrev" type="button">Previous</button>
+          <button class="btn" id="fPlay" type="button">Play this prospect</button>
+          <button class="btn ghost" id="fNext" type="button">Next</button>
+        </div>
+      </div>
+      <div class="follow-grid">
+        <div class="chartwrap"><div class="fchart" id="fchart"></div></div>
+        <aside class="fnote" id="fNote" aria-live="polite"></aside>
+      </div>
+      <div class="fkey" aria-hidden="true">
+        <span><i style="background:var(--flow)"></i>passed</span><span><i style="background:var(--model)"></i>caught and corrected by code, carried on</span>
+        <span><i style="background:var(--hold)"></i>held, with the reason</span><span><i style="background:var(--reject)"></i>rejected or not a fit</span><span><i style="background:var(--ready)"></i>Ready</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="blocked">
+  <div class="wrap">
+    <h2>When a website blocks us, we still find out what the company does</h2>
+    <p>Large company websites often refuse automated readers. Qiagen, 10x Genomics, Beckman Coulter and IDT all did in October. Instead of losing those buyers, the tool describes each company in one line, trying the cheapest way first. One lookup covers everyone at that company.</p>
+    <div class="ladder" id="ladder">
+      <div class="rung"><div class="num">1</div><h3>The website again</h3><p>A normal browser identity, the home page and the About page.</p><div class="cost">Free</div><div class="bar2"></div></div>
+      <div class="rung"><div class="num">2</div><h3>ChatGPT's own knowledge</h3><p>Twenty companies per call. It answers "unknown" unless it is sure it knows this exact company.</p><div class="cost">about $0.0001 a company</div><div class="bar2"></div></div>
+      <div class="rung"><div class="num">3</div><h3>ChatGPT with web search</h3><p>For whatever is still unknown. Five companies per call, at most sixty per run.</p><div class="cost">about $0.003 a company</div><div class="bar2"></div></div>
+      <div class="rung end"><div class="num">4</div><h3>Still unknown</h3><p>Held with the reason, so one line in the sheet's company_description is enough to send.</p><div class="cost">Free</div><div class="bar2"></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="steps">
+  <div class="wrap">
+    <h2>The ten steps</h2>
+    <p>Free checks come first, paid ones last, so money is only spent on people who could actually receive a cadence.</p>
+    <div class="steps">
+      <ol class="step-list" id="stepList" aria-label="Steps"></ol>
+      <div class="detail" aria-live="polite">
+        <div class="detail-body" id="detail"></div>
+        <div class="step-nav">
+          <button class="btn ghost" id="prev" type="button">Previous step</button>
+          <button class="btn" id="next" type="button">Next step</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="anatomy">
+  <div class="wrap">
+    <h2>Where every sentence comes from</h2>
+    <p>A Ready cadence mixes three kinds of sentence: lifted from the report page, written by the model, or built by code. Each kind is checked differently. Click any sentence to see its checks.</p>
+    <div class="anatomy">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+          <div class="tabs" role="tablist" id="tabs"></div>
+          <label class="toggle"><input type="checkbox" id="showSrc" checked> Show where each sentence comes from</label>
+        </div>
+        <div class="email show" id="email" role="tabpanel"></div>
+        <div class="keyline">
+          <span><i style="background:var(--page)"></i>from the report page</span>
+          <span><i style="background:var(--model)"></i>written by the model</span>
+          <span><i style="background:var(--code)"></i>built by code</span>
+        </div>
+      </div>
+      <aside class="note" id="note" aria-live="polite">
+        <h3>Pick a sentence</h3>
+        <p class="small">The example is Scott Phillips at Spatial Genomics from the fifth run, matched to the live U.S. spatial biology report (company fit 0.95, role fit 0.88). It scored 9 of 10 in the review. The closing lines are the v8.39 ones.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section id="cta">
+  <div class="wrap">
+    <h2>Value-led closing lines</h2>
+    <p class="lede">Every email ends on a question built from four facts the engine already holds for the prospect: the company signal, the matched report or offering, the finding E1 uses, and the person's role. The line is assembled by code, not written by a model, so it cannot promise a capability the match does not have, and nothing is ever offered for free. The connect link in E4 stays.</p>
+
+    <h3 style="margin-top:18px">The chain, played for a real row</h3>
+    <p class="small">Pick a prospect from the 02-11-Verified tab and press Play. The chain fills in one link at a time; the four closing lines appear as they are built.</p>
+    <div class="cta-pick" id="ctaPick" role="group" aria-label="Pick a prospect"></div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0 4px">
+      <button class="btn" type="button" id="ctaPlay">Play this prospect</button>
+      <span class="q" id="ctaMeta"></span>
+    </div>
+    <div class="cta-chain" id="ctaChain" aria-live="polite">
+      <div class="cta-node"><div class="num">1</div><div class="t">Prospect</div><div class="v"></div></div>
+      <div class="cta-node"><div class="num">2</div><div class="t">Signal</div><div class="v"></div></div>
+      <div class="cta-node"><div class="num">3</div><div class="t">Match</div><div class="v"></div></div>
+      <div class="cta-node"><div class="num">4</div><div class="t">Value</div><div class="v"></div></div>
+      <div class="cta-node"><div class="num">5</div><div class="t">Role</div><div class="v"></div></div>
+    </div>
+    <div class="cta-mails" id="ctaMails">
+      <div class="cta-mail"><b>E1 · establish relevance</b><span></span><span class="pat"></span></div>
+      <div class="cta-mail"><b>E2 · introduce coverage</b><span></span><span class="pat"></span></div>
+      <div class="cta-mail"><b>E3 · the commercial object</b><span></span><span class="pat"></span></div>
+      <div class="cta-mail"><b>E4 · commercial close + link</b><span></span><span class="pat"></span></div>
+    </div>
+
+    <div class="cta-tabs" role="tablist" id="ctaTabs">
+      <button class="tab" role="tab" aria-selected="true" data-p="p1">The four patterns</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="p2">Report route</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="p3">Offering route (16 families)</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="p4">Role phrases</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="p5">Safeguards</button>
+    </div>
+
+    <div id="p1">
+      <table class="cta-table">
+        <thead><tr><th>Email</th><th>Purpose</th><th>Report route</th><th>Offering route</th></tr></thead>
+        <tbody>
+          <tr><td>E1</td><td>Establish relevance</td><td>Would [value from the E1 finding] be relevant to [role priorities]?</td><td>Would that be relevant to [role priorities]? (the benefit line above it already carries the value)</td></tr>
+          <tr><td>E2</td><td>Introduce coverage</td><td>Would exploring the report's coverage of [market] demand by [dimension 1] and by [dimension 2] be useful to your team?</td><td>Would exploring [family coverage phrase] be useful to your team?</td></tr>
+          <tr><td>E3</td><td>The commercial object</td><td>Would the full [Market] market analysis be relevant to [role work]?</td><td>Would a [matched study] on the [market] market be relevant to [role work]?</td></tr>
+          <tr><td>E4</td><td>Commercial close</td><td>Would it make sense to reconnect about the [Market] market analysis when this becomes a priority? + the connect link</td><td>Would it make sense to reconnect about a [matched study] on the [market] market when this becomes a priority? + the connect link</td></tr>
+        </tbody>
+      </table>
+      <div class="cta-note">Report rows say <b>the full market analysis</b>; offering rows say <b>a study</b>, which is custom-research language. The report-versus-custom distinction is honest in the line itself.</div>
+    </div>
+
+    <div id="p2" hidden>
+      <table class="cta-table">
+        <thead><tr><th>E1 finding card</th><th>E1 closing line</th><th>Seen on</th></tr></thead>
+        <tbody>
+          <tr><td>drivers</td><td>Would understanding what is driving demand in the [market] market be relevant to …?</td><td>Oneida Molded Plastics, AmSty</td></tr>
+          <tr><td>restraints</td><td>Would understanding what is holding back demand in the [market] market be relevant to …?</td><td>Lanxess (raw-material price volatility)</td></tr>
+          <tr><td>regional</td><td>Would understanding where demand for [market] is growing by region be relevant to …?</td><td></td></tr>
+          <tr><td>trends</td><td>Would understanding the trends shaping the [market] market be relevant to …?</td><td></td></tr>
+          <tr><td>opportunities</td><td>Would understanding where the [market] market offers stronger growth potential be relevant to …?</td><td></td></tr>
+          <tr><td>competition</td><td>Would understanding how competitors are positioned in the [market] market be relevant to …?</td><td></td></tr>
+          <tr><td>segment:[dimension]</td><td>Would understanding [market] demand by [dimension] be relevant to …?</td><td>Berry Global (by application)</td></tr>
+          <tr><td>E2 coverage</td><td colspan="2">The two dimensions come from the report page's own coverage line, region excluded. Nested brackets are stripped, and a dimension must be a plain one- or two-word label or it is not used; the Oneida page, whose brackets are nested three deep, is a permanent test.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="p3" hidden>
+      <table class="cta-table">
+        <thead><tr><th>#</th><th>Family</th><th>E1 value (when E1 has no benefit line)</th><th>E2 coverage phrase</th><th>Without a real market name</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Market &amp; Industry Intelligence</td><td>the growth outlook for the [market] market</td><td>the report's market sizing, forecasts and growth drivers for [market]</td><td>the growth outlook for the markets [Company] serves</td></tr>
+          <tr><td>2</td><td>Competitive Intelligence</td><td>how competitors are positioned in the [market] market</td><td>how the key players are positioning themselves in [market]</td><td>how competitors are positioned around [Company]</td></tr>
+          <tr><td>3</td><td>Customer &amp; Voice-of-Customer</td><td>what customers weigh when they buy in the [market] market</td><td>customer needs and decision criteria in [market]</td><td>what [Company]'s customers weigh when they buy</td></tr>
+          <tr><td>4</td><td>Growth Opportunity Intelligence</td><td>where the [market] market offers stronger growth potential</td><td>emerging openings and underserved segments in [market]</td><td>which openings next to [Company]'s current markets are most attractive</td></tr>
+          <tr><td>5</td><td>Go-to-Market &amp; Commercial</td><td>which segments of the [market] market offer stronger openings</td><td>market entry and segment opportunities in [market]</td><td>which segments offer [Company] the stronger openings</td></tr>
+          <tr><td>6</td><td>Product &amp; Portfolio Strategy</td><td>how product requirements and competing portfolios are moving in [market]</td><td>product-market opportunities and adoption trends in [market]</td><td>how product requirements are moving in [Company]'s markets</td></tr>
+          <tr><td>7</td><td>Technology &amp; Innovation</td><td>which technologies are gaining ground in the [market] market</td><td>technology adoption trends and their commercial implications in [market]</td><td>which technologies are gaining ground in [Company]'s markets</td></tr>
+          <tr><td>8</td><td>Ecosystem &amp; Partnership</td><td>how the supplier and partner landscape is changing in [market]</td><td>the ecosystem and partnership developments shaping [market]</td><td>how [Company]'s partner and supplier landscape is changing</td></tr>
+          <tr><td>9</td><td>Supply Chain &amp; Procurement</td><td>supply-demand dynamics and capacity in the [market] market</td><td>supply-side developments and sourcing trends in [market]</td><td>supply-demand dynamics across [Company]'s markets</td></tr>
+          <tr><td>10</td><td>Pricing &amp; Commercial Benchmarking</td><td>pricing trends and competitive positioning in the [market] market</td><td>pricing dynamics across the [market] market</td><td>pricing dynamics across [Company]'s markets</td></tr>
+          <tr><td>11</td><td>Investment &amp; Strategic</td><td>the attractiveness and investment trends of the [market] market</td><td>investment developments and market opportunities in [market]</td><td>investment trends across [Company]'s markets</td></tr>
+          <tr><td>12</td><td>M&amp;A Intelligence</td><td>consolidation and acquisition activity across the [market] market</td><td>the acquisition landscape and competitive developments in [market]</td><td>consolidation across [Company]'s markets</td></tr>
+          <tr><td>13</td><td>Sustainability &amp; ESG</td><td>how sustainability pressures are reshaping the [market] market</td><td>sustainability-driven developments and decarbonisation trends in [market]</td><td>how sustainability pressures are reshaping [Company]'s markets</td></tr>
+          <tr><td>14</td><td>Site Selection &amp; Location</td><td>which regions show the strongest demand for [market]</td><td>regional demand patterns and location attractiveness in [market]</td><td>which regions show the strongest demand for [Company]</td></tr>
+          <tr><td>15</td><td>Consumer &amp; Brand</td><td>how buyers see the brands in the [market] market</td><td>consumer trends and brand positioning in [market]</td><td>how buyers see the [Company] brand</td></tr>
+          <tr><td>16</td><td>Strategic Monitoring</td><td>ongoing visibility of market and competitor moves in [market]</td><td>continuous monitoring of [market] developments</td><td>ongoing monitoring of [Company]'s markets</td></tr>
+        </tbody>
+      </table>
+      <div class="cta-note">The E3 and E4 object is always the study the picker actually matched (OFFERING PROPOSED → study in the Dossier). Bare names get the word <b>study</b>: Brand Perception → a Brand Perception study. A market line that is a writer's phrase ("the markets Clack serves") is not a market name, so the lines are built around the company instead.</div>
+      <div class="cta-note warn">v8.39 maps offering → closing line. The signal → offering choice is the existing picker, and it can over-reach (LG Chem: a partnership became Brand Perception). v8.40 adds a signal-kind → family table (partnership → #8, acquisition → #12, expansion → #4 or #14, launch → #6, investment → #11, sustainability → #13) with an override only at 0.6 confidence and a recorded reason.</div>
+    </div>
+
+    <div id="p4" hidden>
+      <table class="cta-table">
+        <thead><tr><th>Title contains</th><th>E1 ends with</th><th>E3 ends with</th></tr></thead>
+        <tbody>
+          <tr><td>sales, commercial, account</td><td>your sales priorities</td><td>your sales planning</td></tr>
+          <tr><td>business development, origination, partnership</td><td>your business development priorities</td><td>your business development work</td></tr>
+          <tr><td>strategy, corporate development, planning</td><td>your strategy priorities</td><td>your strategy work</td></tr>
+          <tr><td>marketing, brand, communications</td><td>your marketing priorities</td><td>your marketing work</td></tr>
+          <tr><td>finance, CFO, treasury, investment</td><td>your investment priorities</td><td>your financial planning</td></tr>
+          <tr><td>product, portfolio</td><td>your product priorities</td><td>your product planning</td></tr>
+          <tr><td>procurement, supply, sourcing, purchasing</td><td>your sourcing priorities</td><td>your procurement planning</td></tr>
+          <tr><td>technology, CTO, R&amp;D, engineering, digital, innovation</td><td>your technology priorities</td><td>your technology planning</td></tr>
+          <tr><td>CEO, President, Chairman, Founder, Owner, COO, MD, GM</td><td>your team's priorities</td><td>your team's planning</td></tr>
+          <tr><td>anything else</td><td>your team's priorities</td><td>your team's work</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="p5" hidden>
+      <div class="rails" style="margin-top:0">
+        <div class="rail"><h3>What the line may say</h3><dl>
+          <dt>Value only from the match</dt><dd>Report rows: the page's own coverage and the finding card E1 uses. Offering rows: the family table and the study actually matched. No capability the match does not have.</dd>
+          <dt>No free deliverables</dt><dd>Every "one page", "summary" and "single page" line is gone; in-body page promises become "The full analysis also covers …".</dd>
+          <dt>Report versus custom research</dt><dd>"the full [Market] market analysis" for report rows; "a [Study] on the …" for offering rows.</dd>
+          <dt>A real market name, or the company</dt><dd>Starts with "the", longer than four words, or contains the company name: not a market. The lines are built around the company instead.</dd>
+        </dl></div>
+        <div class="rail"><h3>When the line is not applied</h3><dl>
+          <dt>Clean text or nothing</dt><dd>A line with stray brackets, odd characters or a broken list is never applied.</dd>
+          <dt>Referral cadences</dt><dd>Rows that ask for the right person keep their own closing.</dd>
+          <dt>Unknown shapes</dt><dd>A closing line the writer produced in a different shape is left as written, not guessed at.</dd>
+          <dt>Everywhere Ready is written</dt><dd>Runner, promotions, the Ready guard and the ten-minute sweep run the same code. A rule change re-checks every Ready row automatically; the final reader still reads the finished emails before Ready.</dd>
+        </dl></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="rails">
+  <div class="wrap">
+    <h2>The guard rails</h2>
+    <p>These hold every time. A row that breaks one is held with the reason, the evidence and the exact text, so it can be fixed or the rule corrected.</p>
+    <div class="rails">
+      <div class="rail">
+        <h3>Never in an email</h3>
+        <dl>
+          <dt>Anything offered for free</dt><dd>No one-pager, sample, report, deck or download. Every email ends on a value-led question built from the matched report or offering (see Closing lines); E4 adds the link to our team.</dd>
+          <dt>Numbers and links before E4</dt><dd>No figures, percentages, amounts or years. A news opener that only works with its number is dropped. Share-price and stock headlines are never an opener. The link to our team appears once, at the end of E4.</dd>
+          <dt>Words the page does not back</dt><dd>A finding keeps only what the report page contains: a tail clause the page does not have ("which may impact service delivery") is cut. "Our latest analysis" only when the page's base year is last year or newer.</dd>
+          <dt>Claims and advice about the reader</dt><dd>Never says they have a problem or are behind. What a finding means is always a question it raises. "Should", "must" and "needs to" in the opening question become "could". No product the company does not describe.</dd>
+          <dt>Sentences that point at nothing</dt><dd>"The segment", "this rapid growth", "these standards", "the region", "the high share" unnamed: replaced with the page's own sentence, or the region is named from the card; a dangling finding holds the row.</dd>
+          <dt>Other company names and jargon</dt><dd>Competitors named on the page are blocked; places such as "North America" are not mistaken for them. "Leveraging" becomes "using"; "groundbreaking" and "lucrative" are dropped; "robust" becomes "strong".</dd>
+        </dl>
+      </div>
+      <div class="rail">
+        <h3>Shape of every cadence</h3>
+        <dl>
+          <dt>E1</dt><dd>Greeting, opening question, what the report covers (at most two breakdowns, two examples each, only ones the page lists), the first finding, what it could show this person, and a closing question built from the E1 finding and the role.</dd>
+          <dt>E2</dt><dd>A finding of its own, a question that shares a word with it and is built from its subject, and a closing question on the report's coverage.</dd>
+          <dt>E3</dt><dd>A finding of its own, from a card E1 and E2 did not use. A coverage-only line is never sent; with nothing left on the page the row is held. Closes on the full market analysis (or the matched study).</dd>
+          <dt>E4</dt><dd>A commercial close ("Would it make sense to reconnect about the … analysis when this becomes a priority?"), then the link to our team.</dd>
+          <dt>Three findings or hold</dt><dd>A report page needs three findings that fit the company (MIN_FINDINGS=3), one for each of E1, E2 and E3, or the row is held before writing.</dd>
+          <dt>Colleagues</dt><dd>Two contacts at one account never share a news opener, the E1 coverage line, the E1 finding or the E2 finding; the same opening line to two contacts holds the row.</dd>
+        </dl>
+      </div>
+      <div class="rail">
+        <h3>Who gets a cadence</h3>
+        <dl>
+          <dt>Buyers, not browsers</dt><dd>Influencers below VP, client-facing sales roles, engineers and scientists without a leadership title, field sales VPs and communications-only roles are held.</dd>
+          <dt>Technical VPs</dt><dd>Get a referral cadence: the same insight, and an ask for a call or the right person.</dd>
+          <dt>Two per account</dt><dd>At most two Ready contacts per account across every batch; a parent and its companies count as one (config/parents.csv).</dd>
+          <dt>Real companies, real people</dt><dd>Spam websites, websites that name another company, non-profits, acquired companies and competitors are stopped before any spend. A first name that does not match the email address is held before matching.</dd>
+        </dl>
+      </div>
+      <div class="rail">
+        <h3>Truth and spend</h3>
+        <dl>
+          <dt>Traced to a source</dt><dd>Report sentences must share their words with the page and agree with it on not, no and less. Findings in config/bad-findings.txt are never used.</dd>
+          <dt>Fact guard, then an audit of the guard</dt><dd>Code checks every flag before a row is held. A flag on the E1 finding is repaired with the page's own sentence and checked again. A flag dismissed as "an open question" is kept when it sits in a finding sentence. Guard edits never touch our own template or question lines.</dd>
+          <dt>Quality review on quoted issues</dt><dd>Every quote is judged on its whole sentence. An "irrelevant" issue on a page finding that Jev scored as relevant to the company is overruled. If the review cannot run, the row is held.</dd>
+          <dt>Ready only with all four emails</dt><dd>Nothing reaches column N as Ready without a subject and four emails already in place and read back (v8.34, v8.35). The self-audit re-reads every Ready row whenever a rule changes, and a final reader checks for wrong facts, wrong company or broken sentences before Ready (v8.37, v8.38).</dd>
+          <dt>Spend limits</dt><dd>COST_CAP_PER_1K=0.80 is enforced: over it, the rest of the run is held before any paid step.</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="robust">
+  <div class="wrap">
+    <h2>The cases we handled to make it robust</h2>
+    <p>Every case started as a real row that went wrong in a run. Each is now handled by code and has a regression test built from that row: the installer runs every test and puts every file back if one fails.</p>
+    <div class="chips" id="chips" role="group" aria-label="Filter the cases by stage"></div>
+    <p class="small" id="caseCount" aria-live="polite"></p>
+    <div class="cases" id="cases"></div>
+  </div>
+</section>
+
+<section id="statuses">
+  <div class="wrap">
+    <h2>What each status means</h2>
+    <div class="status-row">
+      <div><span class="pill p-ready">Ready</span></div><div>Passed every content check: the rule checks, the fact guard, the quality review, the self-audit and the final reader. It does not mean sent.</div>
+      <div><span class="pill p-hold">Hold: reason</span></div><div>Held, with the reason. A written draft is kept in the Dossier, not in the email columns; the Dossier starts with a hold audit: what failed, the evidence checked and why. Holds made before writing spent nothing more on the row.</div>
+      <div><span class="pill p-hold">Retry: reason</span></div><div>Sent back by the self-audit for a fresh run through every check, at most twice. Picked up automatically on the next run.</div>
+      <div><span class="pill p-reject">Rejected</span></div><div>Failed a free check, such as a denied title or a disqualified account. Nothing was spent.</div>
+      <div><span class="pill p-nf">Not a fit</span></div><div>The organisation is not a buyer of commissioned research, such as a non-profit or public body.</div>
+      <div><span class="pill p-sent">Sent</span></div><div>Never set by the engine. Only your sending tool sends.</div>
+    </div>
+  </div>
+</section>
+
+<section id="cost">
+  <div class="wrap">
+    <h2>What it costs</h2>
+    <p>The target is $0.80 per 1,000 prospects, counting everyone in the run. Rows stopped before writing cost close to nothing; a written and checked cadence costs about a sixth of a cent. Move the sliders to size a run.</p>
+    <div class="cost">
+      <div class="controls">
+        <label for="prospects">Prospects in the run <output id="prospectsOut">1,000</output></label>
+        <input type="range" id="prospects" min="100" max="10000" step="100" value="1000">
+        <label for="rate">Share that ends up Ready <output id="rateOut">26%</output></label>
+        <input type="range" id="rate" min="10" max="50" step="1" value="26">
+        <label for="blockedPct">Share whose website blocks us <output id="blockedOut">10%</output></label>
+        <input type="range" id="blockedPct" min="0" max="40" step="1" value="10">
+        <p class="small" style="margin:6px 0 0">About 85% of written cadences ended Ready in the fifth run, so the Ready share sets how many are written.</p>
+      </div>
+      <div>
+        <div class="totals">
+          <div class="total"><b id="tSpend">$0.60</b><span>model spend for the run</span></div>
+          <div class="total"><b id="tReady">260</b><span>Ready cadences</span></div>
+          <div class="total" id="tPerBox"><b id="tPer">$0.60</b><span>per 1,000 prospects (cap $0.80)</span></div>
+        </div>
+        <p class="small" id="searchNote" style="margin-top:14px"></p>
+        <table class="prices">
+          <thead><tr><th>Step</th><th>Runs for</th><th>Cost</th></tr></thead>
+          <tbody>
+            <tr><td>Reading the sheet and websites, free checks, entity checks, rule checks, closing lines, sheet writes</td><td>everyone</td><td>free</td></tr>
+            <tr><td>Describing blocked websites</td><td>companies whose website blocks us</td><td>free to about $0.003</td></tr>
+            <tr><td>Seat gate (Jev)</td><td>people who pass the free checks</td><td>about $0.00003</td></tr>
+            <tr><td>Report matching and finding relevance (Jev)</td><td>each qualified person</td><td>about $0.0002</td></tr>
+            <tr><td>Writer, gpt-4o-mini</td><td>each cadence written</td><td>about $0.0006</td></tr>
+            <tr><td>Fact guard, repairs included</td><td>each cadence written</td><td>about $0.00065</td></tr>
+            <tr><td>Quality review</td><td>each cadence that passes the guard</td><td>about $0.0003</td></tr>
+            <tr><td>Final reader, gpt-4o (SEND_GATE)</td><td>each cadence about to be Ready</td><td>about $0.015</td></tr>
+          </tbody>
+        </table>
+        <p class="small" style="margin-top:10px">Estimates from the token counts of each call. The real figure is the [BUDGET] line at the end of every run ("Run cost: $x per 1,000 prospects"). The final reader is the one paid step outside the cap; set SEND_GATE_MODEL=gpt-4o-mini to cut it by about ten times.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Kings Research cadence engine v8.39. Since v8.14: the Ready gate and Ready guard (v8.34, v8.35), the offering cadence made good (v8.36), the self-audit that checks its own work (v8.37), the final reader (v8.38) and value-led closing lines (v8.39: src/pipeline/cta.js, wired into self-audit.js, test-v839.js). Earlier files: single-mode.js, single-writer.js, guard-audit.js, fact-guard.js, free-checks.js, seat-gate.js, parents.js, company-name.js, timezones.js, cost-ledger.js, config/parents.csv, config/bad-findings.txt and their tests.</div>
+</footer>
+
+<script>
+(() => {
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  let view = 'steps';
+
+  // ---------- the ten steps ----------
+  const STEPS = [
+    { short: 'Read sheet and websites', title: 'Read the sheet and the websites', who: 'Free for most rows. ChatGPT only for companies whose website blocks us.',
+      what: 'Rows are read from the chosen tab, starting at the first row with an empty Status. Each company website is read for what it sells, its markets and its real name. When a website refuses our reader, the company is described in one line instead: the website again, then ChatGPT\'s own knowledge, then ChatGPT with web search.',
+      checks: ['What the company sells and the markets it serves', 'The company name as the company writes it, including its own capitals', 'A blocked website: described by the next cheapest way, once per company', 'The time zone: from the country, unless the job title names another country or the email has a country domain'],
+      holds: 'Nobody is stopped here. This step gathers what the rest of the run works from.', tone: 'none' },
+    { short: 'Free checks', title: 'Free checks on the person and the company', who: 'Free. Runs for every row.',
+      what: 'Simple rules remove people who should never receive a cadence, before any model is called. They also check that the company is who the sheet says it is, and that the email address belongs to the person named.',
+      checks: ['Denied titles and disqualified accounts', 'Non-profits and public bodies', 'Companies absorbed into or acquired by a parent: the parent is suggested instead', 'Spam or hacked websites, websites that name a different company, domains that do not match', 'A first name that is not in the email address (fix pack 4)', 'Duplicate email addresses'],
+      holds: 'Stopped here: rejected, not a fit, or held to confirm the company or the contact.', tone: 'reject' },
+    { short: 'Seat gate', title: 'Does this person buy market research?', who: 'Jev scoring. About three thousandths of a cent each.',
+      what: 'Each role is scored as a buyer or an influencer, with a buy score. People are grouped into accounts (a parent and the companies it owns count as one).',
+      checks: ['Buyer or influencer, and a buy score against the Ready bar', 'Engineers and scientists without a leadership title, client-facing sales roles, field sales VPs and communications-only roles are held', 'Technical and scientific VPs get a referral cadence', 'At most two Ready contacts per account, across every batch'],
+      holds: 'Held here: influencer, a role that does not buy research, seat below the bar, or account cap.', tone: 'hold' },
+    { short: 'News research', title: 'Recent company news', who: 'Free news feeds, then OpenAI search capped at $10 a month.',
+      what: 'The last 90 days of company news are searched. A news item is only used to open E1, and only if it is clearly about this company, works without numbers, and is not a share-price or stock headline.',
+      checks: ['Freshness window (90 days)', 'News about a different company is dropped', 'Bad news, and share-price or stock headlines, are never used (fix pack 4)', 'An opener that only works with its number is dropped', 'A colleague never gets the same opener'],
+      holds: 'Nobody is held here. Most cadences open without news.', tone: 'none' },
+    { short: 'Report match', title: 'Match to a live Kings Research report', who: 'Embeddings plus Jev scoring. About two hundredths of a cent each.',
+      what: 'The company is compared with all 2,936 scanned report pages. The closest are scored on company fit, role fit and how specific the market is. Then each finding on the chosen page is scored for relevance to this company. Three findings must fit, one for each of E1, E2 and E3, or the row is held before writing. With no report close enough, a Kings Research offering is matched instead and the cadence is built from it.',
+      checks: ['Own market: company fit at least 0.90, role fit at least 0.80', 'Related market: company fit at least 0.70, said plainly to be close, with a finding at 0.35 or more', 'Three findings at relevance 0.3 or more (MIN_FINDINGS=3, fix pack 5)', 'Findings in config/bad-findings.txt are never used', 'No report: an offering is matched from the signal and the role, and the match is written to the Dossier'],
+      holds: 'Held here: no report page close enough and no signal to open an offering cadence on, related findings that barely fit, or fewer than three findings that fit.', tone: 'hold' },
+    { short: 'Writing', title: 'Write the four emails', who: 'gpt-4o-mini. About six hundredths of a cent per cadence.',
+      what: 'The model writes the parts that need judgment: the opening question, the benefit, the second finding and the question it raises. Code builds the rest from the page and corrects what the model gets wrong. The closing line of every email is built by code from the match, the finding and the role (see Closing lines).',
+      checks: ['Report sentences must share their words with the page; a tail the page does not back is cut (fix pack 5)', 'A finding that points at nothing is replaced with the page\'s own sentence (fix pack 5)', 'The E2 question is built from the finding\'s subject (fix packs 3 and 5)', 'The coverage line names at most two breakdowns, two examples each (fix pack 5)', '"Should" becomes "could"; no product the company does not describe (fix pack 5)', 'E3 always from a card of its own; colleagues never share E1 (fix pack 5)', 'Every closing line is value-led and built by code; nothing is offered for free (v8.39)'],
+      holds: 'Held here only when the page has nothing left for E3. Weak model lines are corrected or replaced by code, and noted.', tone: 'none' },
+    { short: 'Rule checks', title: 'Rule checks on all four emails', who: 'Free. Code only.',
+      what: 'Every hard rule is checked by code. If E2 to E4 fail, they are rebuilt once from the page by code and checked again.',
+      checks: ['Nothing free, no numbers, no links before E4, no jargon', 'No claim that the reader has a problem; no advice', 'Grammar, shape, one question mark in E1, a closing question on E1 to E4, E4 ends on the link', 'No other company names; places are not company names'],
+      holds: 'Held here: failed cadence check, with the rule and the exact text in the hold audit.', tone: 'hold' },
+    { short: 'Fact guard', title: 'Fact guard, and an audit of every flag', who: 'gpt-4o-mini. About seven hundredths of a cent per cadence, repairs included.',
+      what: 'A second model checks each claim against the report page, the company website and the news. Code then checks every flag before a row is held, and repairs what it safely can.',
+      checks: ['Flags on code-built lines, open questions or the page\'s own wording are dismissed and written down', 'A flag dismissed as "an open question" is kept when it sits in a finding sentence (fix pack 5)', 'A flag on the E1 finding: the page\'s own sentence, checked again', 'A flag in E2 to E4: rebuilt from the page, checked again', 'Guard edits never touch our own lines (fix pack 3)'],
+      holds: 'Held here: failed fact guard, listing the kept flag, the evidence checked and the guard\'s reason.', tone: 'hold' },
+    { short: 'Quality review', title: 'Would a careful person send this?', who: 'gpt-4o-mini, then the self-audit (free) and the final reader (gpt-4o).',
+      what: 'The reviewer must quote any sentence that breaks a rule. Code checks every quote, against the whole sentence it comes from, before it can hold a row. If the review cannot run, the row is held. Before Ready, the self-audit re-reads the finished emails with code rules, and a final reader looks only for a wrong fact, a wrong company or a broken sentence.',
+      checks: ['Advice, assumptions, repeats, grammar, fit', 'A quoted fragment is judged by its whole sentence (fix pack 2)', '"Irrelevant" on a page finding Jev scored as relevant is overruled (fix pack 4)', 'Self-audit: dangling findings, call asks, profile-line openers, duplicate cadences at one account (v8.37)', 'Final reader: wrong fact, wrong company, broken sentence, each with a quote from the email (v8.38)', 'The review could not run: held'],
+      holds: 'Held here: only verified issues, each with its exact quote.', tone: 'hold' },
+    { short: 'Ready', title: 'Ready, written to the sheet', who: 'Free.',
+      what: 'The subject and four emails go into the email columns, with the Dossier, sources and QA notes; only then is the Status set to Ready, and the Ready guard refuses any Ready without them. The run ends with a summary, a funnel that counts every hold reason separately, and the cost per 1,000 prospects.',
+      checks: ['Ready means passed every content check; it does not mean sent', 'No Ready without the subject and four emails read back (v8.34, v8.35)', 'One Ready cadence per email address and two per account', 'Over COST_CAP_PER_1K the rest of the run is held'],
+      holds: 'Ready: 26 of 100 in this example.', tone: 'ready' }
+  ];
+
+  // ---------- how each step decided ----------
+  const DECIDE = [
+    { q: 'What does this company sell, and what is it really called?',
+      rules: [['Website read', 'what it sells, its markets and its name', 'go'], ['Website refuses our reader', 'described: website again, then ChatGPT', 'fix'], ['The website writes the name differently', 'the company\'s own spelling and capitals are used', 'fix'], ['Country, job title and email domain', 'time zone for the send window', 'go']],
+      ex: [
+        { who: 'Peter Hesse', co: 'Qiagen', out: 'described (second try)', tone: 'fix', trace: [['Website', 'qiagen.com gave no readable text on the first read'], ['Next', 'the website again; one lookup covers his Qiagen colleagues']] },
+        { who: 'Angelique H', co: '10x Genomics', out: 'described by ChatGPT', tone: 'fix', trace: [['Website', '10xgenomics.com gave no readable text'], ['ChatGPT knowledge', '"genomics solutions for researchers in the life sciences"']] },
+        { who: 'Benjamin Couraud', co: 'Roche', out: 'time zone from the title', tone: 'fix', trace: [['Sheet country', 'United States'], ['Job title', 'Strategy & Marketing Unit Director, France'], ['Decision', 'Europe/Paris']] }
+      ] },
+    { q: 'Should this person get a cadence, and is the company who the sheet says it is?',
+      rules: [['Title on the deny list', 'Rejected', 'reject'], ['Non-profit or public body', 'Not a fit', 'reject'], ['Absorbed into or acquired by a parent', 'Hold: acquired (pitch the parent)', 'hold'], ['Website shows spam, names another company, or does not match the email domain', 'Hold: website check', 'hold'], ['First name not in the email address', 'Hold: check the contact', 'hold'], ['None of these', 'continues', 'go']],
+      ex: [
+        { who: 'Ariel T', co: 'Thermo Fisher Scientific', out: 'Hold: name and email', tone: 'hold', trace: [['Row', 'Ariel T, carrie.thomas@thermofisher.com'], ['Rule', 'the first name must be in the address, or match its initial and last name (fix pack 4)'], ['Before', 'four emails that greeted the wrong person reached Ready']] },
+        { who: 'Douglas Smith', co: 'SeQure Dx', out: 'Hold: website spam', tone: 'hold', trace: [['Website', 'sequre-dx.com shows "SLOT GACOR" slot-game text'], ['Rule', 'a spam or hacked website cannot describe the company']] },
+        { who: 'David Kulp', co: 'Fabric Genomics', out: 'Hold: acquired by GeneDx', tone: 'hold', trace: [['Website', '"Latest News GeneDx Has Acquired Fabric Genomics"'], ['Fix pack 2', 'menu words are skipped: "acquired by GeneDx"']] },
+        { who: 'Jose Ordovas', co: 'Tufts University', out: 'Not a fit', tone: 'reject', trace: [['Domain', 'tufts.edu'], ['Rule', 'education and public bodies rarely buy commissioned research']] },
+        { who: 'Cristina Bitzilis', co: 'Illumina', out: 'Rejected', tone: 'reject', trace: [['Title', 'Senior Territory Account Manager'], ['Rule', 'territory account roles sell; they do not buy research']] }
+      ] },
+    { q: 'Does this person buy market research, and is there room at this account?',
+      rules: [['Buyer above the Ready bar', 'continues', 'go'], ['Influencer at VP level or above', 'continues as a referral cadence', 'go'], ['Influencer below VP', 'Hold: influencer', 'hold'], ['Client-facing sales role, engineer, scientist, field sales VP, communications-only role', 'Hold: seat', 'hold'], ['Third contact at the same account', 'Hold: account cap', 'hold']],
+      ex: [
+        { who: 'Alvin', co: '10x Genomics', out: 'Hold: seat', tone: 'hold', trace: [['Title', 'Senior Software Engineer, Co-founder'], ['Rule', 'an individual-contributor title does not buy research']] },
+        { who: 'Lam O\'Callaghan', co: 'DNA Genotek', out: 'Hold: sales role', tone: 'hold', trace: [['Title', 'Senior Sales Manager, USA and Canada'], ['Rule', 'a client-facing sales role below VP recommends but does not buy']] },
+        { who: 'Agnese Winfield', co: 'NanoString', out: 'Hold: account cap', tone: 'hold', trace: [['Parents list', 'NanoString, Canopy and Acuity are one Bruker account'], ['Result', 'the two Bruker slots went to David G and Ian Buell']] },
+        { who: 'Dan M', co: 'Ultima Genomics', out: 'referral cadence', tone: 'go', trace: [['Title', 'Vice President Molecular Biology'], ['Rule', 'technical VPs get the same insight and an ask for the right person']] }
+      ] },
+    { q: 'Is there recent news safe to open with?',
+      rules: [['About this company, within 90 days, no numbers needed', 'may open E1', 'go'], ['Share-price or stock headline', 'never used (fix pack 4)', 'hold'], ['About a different company; bad news; needs its number', 'not used', 'hold'], ['Already used for a colleague', 'not used again', 'fix']],
+      ex: [
+        { who: 'Zachary B', co: '10x Genomics', out: 'stock headline skipped', tone: 'fix', trace: [['News', '"10x Genomics (TXG): Doubled, Then Doubled Again"'], ['Rule', 'share-price headlines are never an opener'], ['Before', 'held three runs in a row for "doubled its business"']] },
+        { who: 'Dan M', co: 'Ultima Genomics', out: 'opener dropped', tone: 'hold', trace: [['News', '"Ultima Genomics Touts $60 Genome"'], ['Without the number', '"touted its genome"; dropped']] },
+        { who: 'Stephen S', co: 'ActX', out: 'not used', tone: 'hold', trace: [['News', '"Mankind Pharma to acquire a stake in Belgium\'s ACTx"'], ['Check', 'a different company with a similar name']] }
+      ] },
+    { q: 'Which live Kings Research page is closest, and does it have three findings for this company?',
+      rules: [['Company fit 0.90+, role fit 0.80+', 'own-market report', 'go'], ['Company fit 0.70+ on a neighbouring market, a finding at 0.35+', 'related-market report, said to be close', 'go'], ['No page, but a verified company signal', 'offering cadence, built from the matched Kings Research offering', 'go'], ['Nothing close enough and no signal', 'Hold: no signal', 'hold'], ['Fewer than three findings fit the company', 'Hold: too few findings (fix pack 5)', 'hold']],
+      ex: [
+        { who: 'Anne Stevens', co: 'AbCellera', out: 'Hold: too few findings', tone: 'hold', trace: [['Page', 'Biologics, company fit 0.86'], ['Findings that fit', 'one (0.32); the others 0.18 and 0.16'], ['Before fix pack 4', 'E2 repeated E1 and the row scored 4 of 10']] },
+        { who: 'Aviva J', co: 'DxTerity', out: 'Hold: too few findings', tone: 'hold', trace: [['Page', 'In vitro diagnostics (related market)'], ['Findings that fit', 'two; E3 had to borrow E2\'s card'], ['Fix pack 5', 'three findings or hold, so E3 always has its own']] },
+        { who: 'Debadeep Bhattacharyya', co: 'Covaris', out: 'Hold: findings do not fit', tone: 'hold', trace: [['Closest page', 'life science instrumentation (related)'], ['Best finding', '0.29 for Covaris, under the 0.35 bar']] },
+        { who: 'Zoe Silver', co: 'Longhorn Vaccines', out: 'Hold: no close page', tone: 'hold', trace: [['Closest page', 'Lyme disease diagnostics, company fit 0.42'], ['Result', 'held before the offering match']] },
+        { who: 'Jonathan Savoie', co: 'Wolf Midstream', out: 'offering cadence', tone: 'go', trace: [['Closest page', 'oil and gas, with only two findings that fit'], ['Signal', 'news: Phase Three expansion'], ['Offering', '#11 Investment & Strategic Intelligence, a Market Attractiveness Assessment']] }
+      ] },
+    { q: 'Which parts can the model write, and which must code build or correct?',
+      rules: [['Model sentence shares its words with the page', 'kept', 'go'], ['A finding tail the page does not back', 'cut (fix pack 5)', 'fix'], ['A finding that points at nothing', 'the page\'s own sentence (fix pack 5)', 'fix'], ['E2 question does not follow its finding', 'rebuilt from the finding\'s subject (fix packs 3 and 5)', 'fix'], ['Code-built coverage line', 'at most two breakdowns, two examples each (fix pack 5)', 'fix'], ['"should"; a product the company does not describe', '"could"; "its products and services" (fix pack 5)', 'fix'], ['E3 from a card already used, or coverage-only', 'rebuilt, or the row is held (fix pack 5)', 'fix'], ['Colleague already has this E1', 'replaced (fix pack 5)', 'fix'], ['Closing line of each email', 'built by code from the match, the finding and the role (v8.39)', 'fix']],
+      ex: [
+        { who: 'Jim Martin', co: 'Via Scientific', out: 'tail cut', tone: 'fix', trace: [['Model wrote', '"...lack of trained laboratory professionals, which may impact service delivery."'], ['Page says', '"...lack of trained laboratory professionals."'], ['Fix pack 5', 'the tail the page does not back is cut before any check'], ['Before', 'held twice as "irrelevant" (67% page wording, under the 70% bar)']] },
+        { who: 'Zachary B', co: '10x Genomics', out: 'question rebuilt', tone: 'fix', trace: [['Before', '"how this lines up with what its customers are asking for"'], ['Now', '"how the growing demand for precise and scalable DNA sequencing could shape its own plans"']] },
+        { who: 'Anna B', co: 'ClearNote Health', out: 'coverage line reworded', tone: 'fix', trace: [['Before', '"demand by technology, from chromosome studies to biochemical genetic studies, type, from diagnostic testing to pharmacogenetics and purpose, from clinical to research"'], ['Now', '"demand by purpose, such as clinical and research, and by type, such as diagnostic testing and presymptomatic or predictive testing"']] },
+        { who: 'Erik Olson', co: 'Foundation Medicine', out: 'vague finding replaced', tone: 'fix', trace: [['Model wrote', '"...supporting the expansion of the segment by facilitating co-development"'], ['Now', 'the page\'s own sentence about pharmaceutical companies and companion diagnostics']] },
+        { who: 'Ian Buell', co: 'NanoString', out: 'colleague E1 replaced', tone: 'fix', trace: [['Before', 'word-for-word the same coverage and finding sentences as David G'], ['Now', 'a finding from another card and a coverage line from breakdowns David\'s did not name']] },
+        { who: 'Aviva J', co: 'DxTerity', out: 'product not assumed', tone: 'fix', trace: [['Model wrote', '"what applications its rapid tests could best support"'], ['Company', 'makes RNA collection devices'], ['Now', '"its products and services"']] },
+        { who: 'Steve Thalmann', co: 'Oneida Molded Plastics', out: 'closing lines built', tone: 'fix', trace: [['Before', '"Would a one-page summary of this analysis be useful?"'], ['Now', '"Would understanding what is driving demand in the plastic contract manufacturing market be relevant to your team\'s priorities?"'], ['v8.39', 'from the drivers card, the Plastic Contract Manufacturing report and the title President & CEO']] }
+      ] },
+    { q: 'Does the cadence break any hard rule?',
+      rules: [['Every rule passes', 'continues', 'go'], ['E2 to E4 break a rule', 'rebuilt once by code, then checked again', 'fix'], ['Still breaking a rule', 'Hold: failed cadence check, with the exact text', 'hold']],
+      ex: [
+        { who: 'Angelique H', co: '10x Genomics', out: 'place, not a company', tone: 'fix', trace: [['Before fix pack 1', 'held: "E1 names another company: North America"'], ['Now', 'regions and countries are never treated as company names']] },
+        { who: 'Paul Travis', co: 'Geneuity', out: 'held, then fixed', tone: 'hold', trace: [['Rule', 'brackets must balance'], ['Found', 'a broken value on the report page'], ['Fix since', 'page values are cleaned before use']] },
+        { who: 'Andy Miller', co: 'Parker Hannifin', out: 'Hold: implies a problem', tone: 'hold', trace: [['E1 finding', '"many manufacturing facilities operate with outdated equipment"'], ['Rule', 'an email never says or implies the reader has a problem'], ['Reviewer', 'may not overturn a rule-check hold (v8.36e)']] }
+      ] },
+    { q: 'Is every claim supported by the report page, the website or the news?',
+      rules: [['The guard finds nothing', 'continues', 'go'], ['Flag on a code-built line, an open question, or the page\'s own wording', 'dismissed and written down', 'fix'], ['Flag dismissed as "an open question" but sitting in a finding sentence', 'kept (fix pack 5)', 'hold'], ['A real flag on the E1 finding', 'the page\'s own sentence, checked again', 'fix'], ['A real flag in E2 to E4', 'E2 to E4 rebuilt, checked again', 'fix'], ['Still a real flag', 'Hold: failed fact guard', 'hold']],
+      ex: [
+        { who: 'Stephen Vincent', co: 'Labcorp', out: 'flag kept, tail cut', tone: 'fix', trace: [['Flag', '"which is expected to impact the market" is not in the research'], ['Before', 'dismissed as "an open question" although it was a relative clause'], ['Now', 'the tail is cut at writing time; a flag like it is kept and the email repaired']] },
+        { who: 'Angelique H', co: '10x Genomics', out: 'own line left alone', tone: 'fix', trace: [['Guard changed', '"one question this raises is" to "may be"'], ['Fix pack 3', 'guard edits never touch our own template or question lines']] },
+        { who: 'Benjamin Couraud', co: 'Roche', out: 'one verb hedged', tone: 'fix', trace: [['Stated as fact', '"artificial intelligence is enabling drug discovery..."'], ['Fix', 'one known verb changed: "may be enabling"']] },
+        { who: 'Steve Ward', co: 'Berry Global', out: 'Hold: wrong company', tone: 'hold', trace: [['Website text', 'news about Amcor, not Berry Global'], ['Rule', 'a flag on who the company is is always kept'], ['Reviewer', 'may not overturn an identity hold (v8.36e, v8.37)']] }
+      ] },
+    { q: 'Would a careful person send this?',
+      rules: [['No issues, or every issue dismissed by code', 'continues', 'go'], ['Quote is an open question or the page\'s own finding (judged on the whole sentence)', 'dismissed', 'fix'], ['"Irrelevant" on a page finding Jev scored as relevant', 'overruled (fix pack 4)', 'fix'], ['A verified issue', 'Hold: quality review, with the quote', 'hold'], ['Self-audit finds a dangling finding, a call ask or a duplicate', 'Retry: a fresh run through every check (v8.37)', 'hold'], ['Final reader finds a wrong fact, wrong company or broken sentence', 'Hold: final reader, with the quote (v8.38)', 'hold'], ['The review cannot run', 'Hold: quality review unavailable', 'hold']],
+      ex: [
+        { who: 'Erik Olson', co: 'Foundation Medicine', out: '"irrelevant" overruled', tone: 'fix', trace: [['Reviewer', '"expanding Medicare coverage ... driving market growth in North America" does not fit'], ['Code', 'the page\'s own finding, which Jev scored 0.4 for the company before writing'], ['Result', 'dismissed; the row went Ready']] },
+        { who: 'Scott Phillips', co: 'Spatial Genomics', out: 'fragment judged in full', tone: 'fix', trace: [['Reviewer quoted', '"may hold back wider adoption."'], ['Whole sentence', 'the page\'s own finding'], ['Fix pack 2', 'dismissed; the row is Ready']] },
+        { who: 'Siddhartha Banerjee', co: 'ExxonMobil', out: 'Retry: dangling finding', tone: 'hold', trace: [['E2 finding', '"the high share is supported by strong oil and natural gas consumption"'], ['Self-audit', '"the high share" points at nothing in the email; sent back for a fresh run (v8.37h)']] },
+        { who: 'Any row', co: 'review offline', out: 'Hold: unavailable', tone: 'hold', trace: [['Rule', 'a review that cannot run never counts as a pass']] }
+      ] },
+    { q: 'Is it Ready to hand to the sending tool?',
+      rules: [['Passed the rule checks, the fact guard, the quality review, the self-audit and the final reader', 'Ready', 'ready'], ['Subject or an email missing', 'Ready refused by the guard (v8.35)', 'hold'], ['Spend over COST_CAP_PER_1K', 'Hold: cost cap reached', 'hold'], ['Ready', 'never means sent', 'go']],
+      ex: [
+        { who: 'Scott Phillips', co: 'Spatial Genomics', out: 'Ready, 9 of 10', tone: 'ready', trace: [['Report', 'U.S. spatial biology, own market'], ['E2', 'substantial upfront costs, and a question built from them'], ['E3', 'the moderately consolidated market, from its own card']] },
+        { who: 'Jim Martin', co: 'Via Scientific', out: 'Ready', tone: 'ready', trace: [['Before', 'held in runs 4 and 5 as "irrelevant"'], ['Now', 'the invented tail is cut; the trained-staff finding is the page\'s own']] },
+        { who: '219 rows', co: '5 November', out: 'Ready refused', tone: 'hold', trace: [['What happened', 'a promotion wrote the subject and Ready without the four emails; 219 blank E1s went out'], ['Since v8.34 and v8.35', 'Ready is written only after the emails are read back, and the guard refuses any Ready without them']] }
+      ] }
+  ];
+
+  // ---------- real prospects, followed end to end (10 steps; shorter when stopped) ----------
+  const FLOW = [
+    { who: 'Scott Phillips', co: 'Spatial Genomics', title: 'Sr. Director of Sales and Customer Support', out: 'Ready', tone: 'ready',
+      sum: 'A clean run: a real company, a buying seat, the company\'s own market report with three findings, and every check passed. Scored 9 of 10.',
+      steps: [['go', 'website read', 'spatialgenomics.com: "Our GenePS offers the highest quality data using seqFISH technology."'], ['go', 'real company, name matches email', 'Domain and website match; sphillips@ matches Scott Phillips.'], ['go', 'buyer, 75', 'A sales director, not a field sales role, so the seat qualifies.'], ['go', 'no recent news', 'E1 opens on a question.'], ['go', 'U.S. spatial biology, 3 findings', 'Own market: company fit 0.95, role 0.88. Findings: R&D funding 0.81, cost barriers 0.73, consolidation 0.52.'], ['go', 'written', 'R&D funding in E1, cost barriers in E2 with a question built from them, consolidation in E3 from its own card.'], ['go', 'all rules pass', 'Nothing free, no numbers, one question mark in E1, the link only at the end of E4.'], ['go', 'guard passed', 'Six flags dismissed by code: the page\'s own wording or our own framing.'], ['fix', 'fragment judged in full', 'The reviewer quoted "may hold back wider adoption." Code judges the whole sentence, the page\'s own finding, and dismisses it.'], ['ready', 'Ready', 'Subject "U.S. spatial biology outlook for Spatial Genomics" and four emails written to the sheet.']] },
+    { who: 'Jim Martin', co: 'Via Scientific', title: 'Senior Vice President Business Development', out: 'Ready', tone: 'ready',
+      sum: 'Held in runs 4 and 5 as "irrelevant". Fix pack 5 cuts the tail the model added to a page finding, so there is nothing left to call irrelevant.',
+      steps: [['fix', 'described by ChatGPT web search', 'viascientific.com gave no readable text: "modular bioinformatics pipelines and tools for life scientists".'], ['go', 'real company', 'A real company on its own domain.'], ['go', 'buyer, 81.8', 'Seat gate: buyer, buy score 81.8.'], ['go', 'no recent news', 'E1 opens on a question.'], ['go', 'bioinformatics, 3 findings', 'Own market: company fit 0.95, role 0.93. Findings: genomic data analysis 0.57, AI and machine learning 0.52, trained staff 0.33.'], ['fix', 'tail cut', 'The model wrote "...lack of trained laboratory professionals, which may impact service delivery." The page stops at "professionals"; the tail is cut before any check.'], ['go', 'all rules pass', 'All hard rules pass.'], ['go', 'guard passed', 'Three flags dismissed: supported by the page.'], ['go', 'no verified issues', 'The trained-staff finding is now the page\'s own words, and Jev scored it 0.33 for the company before writing.'], ['ready', 'Ready', 'Written to the sheet, after two runs held.']] },
+    { who: 'Zachary B', co: '10x Genomics', title: 'Sr. Director of New Product Development', out: 'Ready', tone: 'ready',
+      sum: 'Held three runs running for a share-price headline. Now the headline is never an opener and the generic E2 question is built from the finding.',
+      steps: [['fix', 'described by ChatGPT', '10xgenomics.com gave no readable text: "genomics solutions for researchers in the life sciences".'], ['go', 'real company', 'A real company.'], ['go', 'buyer, 74', 'Alvin (an engineer) is held, so the two 10x slots go to Angelique and Zachary.'], ['fix', 'stock headline skipped', '"10x Genomics (TXG): Doubled, Then Doubled Again" is a share-price headline, never an opener. E1 opens on a question.'], ['go', 'life science tools, 3 findings', 'Own market: company fit 0.97, role 0.84.'], ['fix', 'E2 question rebuilt', '"how this lines up with what its customers are asking for" becomes "how the growing demand for precise and scalable DNA sequencing could shape its own plans".'], ['go', 'all rules pass', 'All hard rules pass.'], ['fix', 'one verb hedged', 'Two findings stated as fact get "may be": no broken rewrite.'], ['go', 'no verified issues', 'Three quoted issues dismissed by code.'], ['ready', 'Ready', 'Written to the sheet.']] },
+    { who: 'Erik Olson', co: 'Foundation Medicine', title: 'Sr Director, Biopharma Enterprise Partnerships', out: 'Ready', tone: 'ready',
+      sum: 'Held in run 4 for a finding the reviewer called irrelevant. Now the vague finding is replaced at writing time and the "irrelevant" call is overruled by code.',
+      steps: [['go', 'website read', 'foundationmedicine.com: a precision medicine company delivering diagnostic solutions for cancer.'], ['go', 'real company', 'A real company.'], ['go', 'buyer, 83', 'The two Foundation Medicine slots go to Erik and Sean Trevino.'], ['go', 'no recent news', 'E1 opens on a question.'], ['go', 'companion diagnostics, 3 findings', 'Own market: company fit 0.93, role 0.91. Findings: end users 0.73, restraints 0.45, regional 0.4.'], ['fix', 'vague finding replaced', '"...supporting the expansion of the segment" points at nothing; the page\'s own sentence about pharmaceutical companies and companion diagnostics takes its place. "should consider" becomes "could consider".'], ['go', 'all rules pass', 'All hard rules pass.'], ['go', 'guard passed', 'Three flags dismissed.'], ['fix', '"irrelevant" overruled', 'The reviewer called the Medicare finding irrelevant. It is the page\'s own finding and Jev scored it 0.4 for the company before writing, so code dismisses the issue.'], ['ready', 'Ready', 'Written to the sheet.']] },
+    { who: 'Ian Buell', co: 'NanoString', title: 'Sr. Director of Sales, East and LATAM', out: 'Ready', tone: 'ready',
+      sum: 'David G at the same account was written first. Ian\'s E1 finding and coverage line are replaced so the two colleagues never get the same email.',
+      steps: [['go', 'website read', 'nanostring.com read; the name carries NanoString\'s own capitals.'], ['go', 'real company', 'Owned by Bruker but still trading as NanoString; counts as one Bruker account.'], ['go', 'buyer, 80.6', 'The two Bruker slots go to David G and Ian.'], ['go', 'no recent news', 'E1 opens on a question.'], ['go', 'U.S. spatial biology, 3 findings', 'Own market: company fit 0.96, role 0.93.'], ['fix', 'colleague E1 replaced', 'The model wrote the same coverage and finding sentences David got. Code swaps in a finding from another card and a coverage line from breakdowns David\'s did not name.'], ['go', 'all rules pass', 'All hard rules pass.'], ['go', 'guard passed', 'Four flags dismissed.'], ['go', 'no verified issues', 'Four quoted issues dismissed.'], ['ready', 'Ready', 'Written to the sheet.']] },
+    { who: 'Stephen Vincent', co: 'Labcorp', title: 'Sr. Business Development Director, Specialty Testing', out: 'Ready', tone: 'ready',
+      sum: 'The model invented ", which is expected to impact the market" and the guard audit let it through as "a question". Fix pack 5 cuts the tail at writing time.',
+      steps: [['go', 'website read', 'labcorp: biopharma and CRO solutions, central laboratory and bioanalytical services.'], ['go', 'real company', 'Labcorp on covance.com: the parents list knows Covance is Labcorp.'], ['go', 'buyer, 84.4', 'Seat gate: buyer, buy score 84.4.'], ['go', 'no recent news', 'E1 opens on a question.'], ['go', 'bioanalytical testing, 3 findings', 'Own market: company fit 0.93, role 0.92.'], ['fix', 'tail cut', '", which is expected to impact the market" is not on the page; cut.'], ['go', 'all rules pass', 'All hard rules pass.'], ['go', 'guard passed', 'Nothing left to flag; and a flag on a finding sentence is never dismissed as a question now.'], ['go', 'no verified issues', 'Four quoted issues dismissed.'], ['ready', 'Ready', 'Written to the sheet.']] },
+    { who: 'Peter Hesse', co: 'Qiagen', title: 'Vice President, Head of Genomics Business', out: 'Ready', tone: 'ready',
+      sum: 'Held in run 3 for a repeated question. Now the E2 question is built from the finding\'s whole subject and the opening says "could", not "should".',
+      steps: [['fix', 'described (second try)', 'qiagen.com refused the first read; the second try returned a banner line, used for matching.'], ['go', 'real company', 'A real company.'], ['go', 'buyer, 82.6', 'Seat gate: buyer, buy score 82.6.'], ['go', 'news not used', '"EQT to buy Qiagen" did not make a usable opener.'], ['go', 'life science tools, 3 findings', 'Own market: company fit 0.94, role 0.93.'], ['fix', 'question subject kept whole', 'The E2 question keeps "increased global drug discovery and development activities" whole, and "should consider" becomes "could consider".'], ['go', 'all rules pass', 'All hard rules pass.'], ['go', 'guard passed', 'Four flags dismissed.'], ['go', 'no verified issues', 'Four quoted issues dismissed.'], ['ready', 'Ready', 'Written to the sheet.']] },
+    { who: 'Dan M', co: 'Ultima Genomics', title: 'Vice President Molecular Biology', out: 'Ready (referral)', tone: 'ready',
+      sum: 'A referral cadence. His news opener only worked with a number in it, so it was dropped; the E2 question is built from "driven primarily by the integration of genomic profiling".',
+      steps: [['go', 'website read', 'ultimagen.com: high-throughput sequencing platforms.'], ['go', 'real company', 'A real company.'], ['go', 'referral seat', 'Influencer, buy score 52.8, at VP level: a referral cadence.'], ['fix', 'news opener dropped', '"Ultima Genomics Touts $60 Genome": without the number it read "touted its genome", so it is dropped.'], ['go', 'DNA sequencing, 3 findings', 'The own-market page is chosen on company fit (0.98).'], ['fix', 'E2 question rebuilt', '"which demand drivers matter most" becomes "how the integration of genomic profiling could shape its own plans".'], ['go', 'all rules pass', 'All hard rules pass.'], ['go', 'guard passed', 'Three flags dismissed.'], ['go', 'no verified issues', 'Four quoted issues dismissed.'], ['ready', 'Ready', 'Each ask also offers a pointer to the right colleague.']] },
+    { who: 'Steve Thalmann', co: 'Oneida Molded Plastics', title: 'President & CEO', out: 'Ready', tone: 'ready',
+      sum: 'A November row under v8.39. The report is a strong own-market match; the closing lines are built from the drivers card, the page\'s coverage and the title; the nested-bracket coverage line is handled.',
+      steps: [['go', 'website read', 'oneidamoldedplastics.com: a custom plastic injection molding company, with design assistance, assembly, painting and decorating.'], ['go', 'real company', 'A real company on its own domain.'], ['go', 'buyer, 87', 'Seat gate: buyer, buy score 87.'], ['go', 'no recent news', 'E1 opens on a question.'], ['go', 'plastic contract manufacturing, 3 findings', 'Own market: company fit 0.97, role 0.93, specific 0.87. Findings: drivers 0.55, regional 0.40, opportunities 0.32.'], ['fix', 'closing lines built', 'E1: "Would understanding what is driving demand in the plastic contract manufacturing market be relevant to your team\'s priorities?" E2 names product type and application from the page; the nested brackets on the page are stripped first.'], ['go', 'all rules pass', 'All hard rules pass.'], ['go', 'guard passed', 'Four flags dismissed: supported by the research.'], ['go', 'no verified issues', 'Quality review passed; the self-audit and the final reader found nothing.'], ['ready', 'Ready', 'E4: "Would it make sense to reconnect about the Plastic Contract Manufacturing market analysis when this becomes a priority?" then the link.']] },
+    { who: 'Jonathan Savoie', co: 'Wolf Midstream', title: 'VP Corporate Development & Strategy', out: 'Ready', tone: 'ready',
+      sum: 'An offering cadence. No report page had three findings that fit, so the Phase Three expansion news picks a Market Attractiveness Assessment, and the closing lines name that study and the strategy role.',
+      steps: [['go', 'website read', 'wolfmidstream.com: midstream energy infrastructure.'], ['go', 'real company', 'A real company.'], ['go', 'buyer, 83', 'Seat gate: buyer.'], ['go', 'news: Phase Three expansion', '"Wolf Midstream Announces Phase Three Expansion" opens E1; it is about this company, works without numbers, and is not a stock headline.'], ['fix', 'offering instead of a page', 'The oil and gas page has only two findings that fit, so the signal (expansion) picks offering #11 Investment & Strategic Intelligence, a Market Attractiveness Assessment.'], ['fix', 'closing lines built', 'E1 is the short form after the benefit line; E3: "Would a Market Attractiveness Assessment on the oil and gas market be relevant to your strategy work?"'], ['go', 'all rules pass', 'The offering gate passes: E1 opens on verified news, E3 sets out the study.'], ['go', 'guard passed', 'Flags on our own offer lines are dismissed by code.'], ['go', 'no verified issues', 'Quality review and final reader passed.'], ['ready', 'Ready', 'Written to the sheet.']] },
+    { who: 'Anne Stevens', co: 'AbCellera', title: 'Vice President of Business Development', out: 'Hold: too few findings', tone: 'hold',
+      sum: 'Held before writing: only one finding on the biologics page fits AbCellera. Before fix pack 4 her E2 repeated E1 and the row scored 4 of 10.',
+      steps: [['go', 'website read', 'abcellera.com: antibody drug programs.'], ['go', 'real company', 'A real company.'], ['go', 'buyer, 87.4', 'Seat gate: buyer, buy score 87.4.'], ['go', 'no recent news', 'No company news.'], ['hold', 'one finding fits', 'Biologics, company fit 0.86, but only one finding at 0.32 fits; three are needed so E1, E2 and E3 each carry their own. Held before writing; nothing more spent.']] },
+    { who: 'Aviva J', co: 'DxTerity', title: 'Vice President of Product Development', out: 'Hold: too few findings', tone: 'hold',
+      sum: 'Held before writing since fix pack 5: two findings fit, so E3 would have had to borrow E2\'s card.',
+      steps: [['go', 'website read', 'dxterity.com: RNA collection devices and at-home collection.'], ['go', 'real company', 'A real company.'], ['go', 'buyer, 71.8', 'Seat gate: buyer, buy score 71.8.'], ['go', 'no recent news', 'No company news.'], ['hold', 'two findings fit', 'In vitro diagnostics (related market), findings at 0.37 and 0.32. Three are needed. Held before writing.']] },
+    { who: 'Debadeep Bhattacharyya', co: 'Covaris', title: 'Sr. Director of Marketing', out: 'Hold: related findings do not fit', tone: 'hold',
+      sum: 'Held before writing: the closest page is a neighbouring market, and none of its findings fit Covaris well enough.',
+      steps: [['fix', 'described by ChatGPT', '"ultrasonic processing solutions for life sciences and materials science".'], ['go', 'real company', 'A real company.'], ['go', 'buyer, 77', 'Seat gate: buyer, buy score 77.'], ['go', 'no recent news', 'No company news.'], ['hold', 'best finding 0.29', 'Life science instrumentation (company fit 0.80, related). Its best finding scored 0.29, under the 0.35 bar.']] },
+    { who: 'Zoe Silver', co: 'Longhorn Vaccines', title: 'Senior Vice President, Genomics & Diagnostics', out: 'Hold: no report close enough', tone: 'hold',
+      sum: 'Held before writing: no Kings Research page is close enough to what Longhorn sells, and no company signal to open an offering cadence on.',
+      steps: [['go', 'website read', '"A small, veteran-owned One Health company developing vaccines and diagnostic tools."'], ['go', 'domain accepted', 'lhnvd.com does not spell the name, but the website names Longhorn.'], ['go', 'buyer, 77.8', 'Seat gate: buyer, buy score 77.8.'], ['go', 'no recent news', 'No company news.'], ['hold', 'no close page', 'Closest: Lyme disease diagnostics, company fit 0.42 (bar 0.90). Held before the offering match.']] },
+    { who: 'Ariel T', co: 'Thermo Fisher Scientific', title: 'Sr. Manager, Global Market Development', out: 'Hold: name and email', tone: 'hold',
+      sum: 'Held before any spend: the email address carrie.thomas@ does not belong to "Ariel T". Before fix pack 4 four emails greeting the wrong person reached Ready.',
+      steps: [['go', 'website read', 'thermofisher.com read.'], ['hold', 'name not in the address', '"Ariel T" against carrie.thomas@thermofisher.com: the first name is not in the address and does not match its initial and last name. Check the contact.']] },
+    { who: 'David Kulp', co: 'Fabric Genomics', title: 'Vice President Bioinformatics', out: 'Hold: acquired by GeneDx', tone: 'hold',
+      sum: 'Held: Fabric Genomics belongs to GeneDx. Since fix pack 2 the hold names the buyer correctly.',
+      steps: [['go', 'website read', 'fabricgenomics.com: AI-driven genomics software.'], ['hold', 'acquired by GeneDx', 'The website says "Latest News GeneDx Has Acquired Fabric Genomics". Pitch the GeneDx account, or confirm the role.']] },
+    { who: 'Agnese Winfield', co: 'NanoString', title: 'Sr Director, APAC EMEA NA Regional Marketing', out: 'Hold: account cap', tone: 'hold',
+      sum: 'Held by the two-per-account cap. NanoString counts as Bruker, and the two Bruker slots went to more senior buyers.',
+      steps: [['go', 'website read', 'nanostring.com read.'], ['go', 'counted with Bruker', 'NanoString, Canopy and Acuity are one Bruker account.'], ['hold', 'two slots taken', 'Buyer, buy score 73.2, but the two Bruker slots go to David G (SVP) and Ian Buell.']] },
+    { who: 'Alvin', co: '10x Genomics', title: 'Senior Software Engineer, Co-founder', out: 'Hold: seat below the bar', tone: 'hold',
+      sum: 'Held at the seat gate. Before v8.14 this row reached Ready and took a director\'s place at 10x.',
+      steps: [['fix', 'described by ChatGPT', 'The same 10x lookup as Angelique; no second call.'], ['go', 'real company', 'A real company.'], ['hold', 'engineer, not a buyer', 'Buyer by score, but "Senior Software Engineer" is an individual-contributor title; "co-founder" no longer makes it a buying seat.']] },
+    { who: 'Douglas Smith', co: 'SeQure Dx', title: 'Sr. VP, R&D', out: 'Hold: website shows spam', tone: 'hold',
+      sum: 'Held before any spend: the company\'s domain now shows a gambling site.',
+      steps: [['go', 'website read', 'sequre-dx.com shows "SLOT GACOR" slot-game text.'], ['hold', 'spam website', 'A hacked or lapsed domain cannot describe the company, and the email may no longer reach him.']] },
+    { who: 'Jose Ordovas', co: 'Tufts University', title: 'Senior Scientist, Director Nutrition and Genomics', out: 'Not a fit', tone: 'reject',
+      sum: 'Stopped at the free checks: universities rarely buy commissioned market research.',
+      steps: [['go', 'website read', 'tufts.edu: a private research university.'], ['reject', 'education domain', 'Not a buyer of commissioned research. Nothing spent.']] },
+    { who: 'Cristina Bitzilis', co: 'Illumina', title: 'Senior Territory Account Manager, Clinical Genomics', out: 'Rejected: denied title', tone: 'reject',
+      sum: 'Stopped at the free checks: territory account managers sell; they do not buy research.',
+      steps: [['go', 'row read', 'Read with the rest of the sheet.'], ['reject', 'denied title', '"Senior Territory Account Manager" is on the deny list. Nothing spent.']] }
+  ];
+
+  // ---------- cases handled ----------
+  const CATS = [['all', 'All cases'], ['identity', 'Who the company is'], ['seat', 'Who gets a cadence'], ['match', 'Which report'], ['writing', 'What the emails say'], ['checks', 'How it checks itself'], ['spend', 'Spend and install safety']];
+  const CASES = [
+    ["writing", "A closing line that offered a free page", "Every email ended on \"Would a one-page summary of this analysis be useful?\" or \"Shall I write that up on one page for you?\"; the same four lines for every prospect.", "The closing line is built by code from the matched report or offering, the E1 finding and the role: relevance, coverage, the commercial object, then a reconnect. Nothing is offered for free.", "v8.39"],
+    ["writing", "A coverage dimension with nested brackets", "Oneida's E2 closed on \"demand by product type , polyethylene, polystyrene) and by application\": the page lists \"Acrylonitrile Butadiene Styrene (ABS, Acrylonitrile Butadiene Styrene (ABS), ...\" three brackets deep.", "Brackets are stripped with a depth count; a dimension must be a plain one- or two-word label or it is not used. A closing line that would not read cleanly is never applied.", "v8.39"],
+    ["writing", "A writer's phrase used as a market name", "Clack's E3 read \"an Adjacent Market Assessment on the the markets clack serves market\".", "A market line that starts with \"the\", runs past four words or contains the company name is not a market; the lines are built around the company: \"an Adjacent Market Assessment for Clack\".", "v8.39"],
+    ["writing", "Role phrases lost in the sweep", "Rows re-read by the self-audit got \"your team's work\" for a President & CEO: the sweep found the title column only under two header names.", "The title column is matched under title, job_title, designation, position and the like; the sweep now writes the same role phrases as the runner.", "v8.39"],
+    ["checks", "A final reader that held everything", "The first final reader held 34 of 34 Ready rows, calling \"You can reach our team here\" a call ask and doubting \"Hosoo\" as a name.", "Narrowed to three problem kinds: wrong fact, wrong company, broken sentence, each with a quote from the email at 0.8 confidence or better. The 31 over-strict holds were put back.", "v8.38b"],
+    ["checks", "Checks that ran once and never again", "A rule fix helped new rows but Ready rows written under the old rule stayed as they were.", "Every Ready write is checked before it lands, and a sweep every ten minutes re-reads all Ready rows; a rule change re-checks them automatically. Held drafts get two fresh tries.", "v8.37"],
+    ["checks", "A reviewer that could overturn any hold", "The automatic reviewer promoted rows held for a wrong company and for \"news about a different company\".", "Only fact-guard holds on a research claim may be promoted; identity, rule-check and final-check holds stay held whatever the reviewer says.", "v8.36e, v8.37"],
+    ["checks", "A finding that points at nothing", "ExxonMobil: \"the high share is supported by strong oil and natural gas consumption\"; Lanxess: \"they cater to niche markets\".", "A finding starting with \"they\", \"the high share\", \"the region\" and the like holds the row and sends it back for a fresh run.", "v8.37h"],
+    ["spend", "Ready written before the emails", "On 5 November a promotion wrote the subject and Ready without the four emails; 219 blank E1s went to UK and EU contacts.", "Ready is written only after the emails are written and read back cell by cell, and a guard on the sheet client refuses any Ready without a subject and four emails.", "v8.34, v8.35"],
+    ["writing", "An offering cadence that said nothing", "E2 and E3 of the all-round cadences were generic, and profile lines (\"we connect science to life\") opened E1 as if they were news.", "E2 and E3 are built from the matched offering's own services; a profile line never opens E1; a draft with call language is never promoted.", "v8.36"],
+    ["writing", "A finding tail the page does not back", "Jim Martin: the model added \"which may impact service delivery\" and the row was held as irrelevant twice. Stephen Vincent: \", which is expected to impact the market\".", "The tail is cut before any check when its own words are not on the page.", "fix pack 5"],
+    ["writing", "A coverage line nobody would write", "\"demand by technology, from chromosome studies to biochemical genetic studies, type, from diagnostic testing to pharmacogenetics and purpose, from clinical to research\"; Marco's named \"sector industry\".", "At most two breakdowns, two examples each. Raw page headings are never named.", "fix pack 5"],
+    ["writing", "Generic E2 questions", "Seven rows asked \"which demand drivers matter most to its customers\" or \"how this lines up with what its customers are asking for\".", "The question is built from the finding's own subject: growing demand for X, investing in X, a shift toward X, challenges such as X, the lack of X, driven by X.", "fix pack 5"],
+    ["writing", "A third email with nothing of its own", "Marco's E3 was \"it compares how demand differs by region\"; Aviva, Jing and Paul Carter took E3 from the same card as E1 or E2.", "E3 must be a page finding from a card E1 and E2 did not use, or the row is held; a page needs three fitting findings.", "fix pack 5"],
+    ["writing", "Findings that point at nothing", "Erik: \"the expansion of the segment\"; Stephen S: \"the rapid growth is largely fueled\".", "Replaced with the page's own sentence in E1, E2 and E3 alike.", "fix pack 5"],
+    ["writing", "\"Should\" in the opening question", "\"GENEWIZ should consider expanding\", \"its laboratories should adopt\", \"the team should consider\".", "\"should\", \"must\" and \"needs to\" become \"could\".", "fix pack 5"],
+    ["writing", "Colleagues with the same E1", "Ian Buell and David G at NanoString had word-for-word identical coverage and finding sentences.", "A colleague's E1 finding is replaced from another card and the coverage line rebuilt from other breakdowns.", "fix pack 5"],
+    ["writing", "A product the company does not make", "Aviva's opening asked about \"its rapid tests\"; DxTerity makes RNA collection devices.", "A product the company never describes becomes \"its products and services\".", "fix pack 5"],
+    ["checks", "A real flag dismissed as a question", "Stephen Vincent: \"which is expected to impact the market\" was treated as an open question.", "A flag whose claim sits in a finding sentence is kept, and the email repaired.", "fix pack 5"],
+    ["checks", "Wrong \"irrelevant\" holds", "Jim Martin, Erik Olson and Michael H were held for page findings Jev had already scored as relevant to the company.", "Overruled by code: relevance is judged once, before writing.", "fix pack 4"],
+    ["match", "One finding, so E2 repeated E1", "Anne Stevens and Thomas Volkert had a single fitting finding.", "Held before writing: a page needs enough findings for every email.", "fix pack 4"],
+    ["identity", "A first name that does not match the email", "Ariel T on carrie.thomas@thermofisher.com reached Ready.", "Held before matching unless the first name, or its initial plus the last name, is in the address.", "fix pack 4"],
+    ["writing", "Share-price headlines used as news", "Zachary B was held three runs running for \"10x Genomics (TXG): Doubled, Then Doubled Again\".", "Stock and share-price headlines are never an opener.", "fix pack 4"],
+    ["writing", "Invented coverage examples", "Angelique: \"biotechnology companies\"; Lori: \"diagnostic testing, such as newborn screening\".", "The coverage line may name only examples the page lists.", "fix pack 4"],
+    ["writing", "Page sentences that point at nothing", "Qin: \"to meet these standards\"; Sean: \"to overcome these obstacles\"; Aviva's repaired E1 read \"It finds that The lack\".", "Pointer sentences are never used; a replaced finding starts in lower case.", "fix pack 4"],
+    ["writing", "\"Leveraging\" and friends", "Paul Carter and Sean kept \"leveraging\" and \"groundbreaking\" from the page.", "\"leveraging\" becomes \"using\"; \"groundbreaking\" and \"lucrative\" dropped.", "fix pack 4"],
+    ["writing", "Empty or coverage-only E2 and E3", "Jim Martin, Angelique and Truth Y got \"Our analysis also looks at what is holding adoption back\".", "A rebuilt E2 or E3 is the page's own sentence.", "fix pack 3"],
+    ["writing", "\"However,\" and \"the region\" copied from the page", "Truth Y: \"the region's robust healthcare infrastructure\"; Angelique: \"however, ...\".", "Lead-in words removed; the region named from the card.", "fix pack 3"],
+    ["checks", "Guard edits on our own lines", "The guard changed \"one question this raises is\" to \"may be\".", "Edits to template and question lines are undone.", "fix pack 3"],
+    ["writing", "An E2 question off its finding", "David G: a question about regions after a cost finding.", "The question must share a word with its finding, or is built from the finding's subject.", "fix pack 3"],
+    ["checks", "Reviewer quotes judged on a fragment", "Scott Phillips was held on \"may hold back wider adoption\", five words of a page finding.", "A quoted fragment is judged by the whole sentence it comes from.", "fix pack 2"],
+    ["checks", "One flagged E1 sentence held the whole row", "Erik Olson was held for one overstated finding.", "The flagged sentence becomes the page's own sentence and the guard checks again.", "fix pack 2"],
+    ["identity", "Acquirer names read with menu words", "Fabric Genomics was held as acquired by \"Latest News GeneDx\".", "Menu words are skipped: \"acquired by GeneDx\".", "fix pack 2"],
+    ["match", "A neighbouring report with nothing useful to say", "Covaris got a page whose best finding scored 0.29.", "A related page needs company fit 0.70 and one finding at 0.35 or better.", "fix pack 1"],
+    ["writing", "A news opener that only works with its number", "\"Ultima Genomics Touts $60 Genome\" became \"touted its genome\".", "Dropped if a number or year has to be removed.", "fix pack 1"],
+    ["writing", "Place names taken for competitors", "A page listed \"North America\" among its companies.", "Regions and countries are never treated as company names.", "fix pack 1"],
+    ["identity", "Spam or hacked company websites", "Tesis Biosciences and SeQure Dx showed slot-game pages.", "Held before any spend.", "v8.14"],
+    ["identity", "Companies absorbed into a parent", "FOTO (Net Health), Canopy and Acuity (Bruker), Invitae (Labcorp), Fabric (GeneDx).", "A parents list, extendable in config/parents.csv.", "v8.14"],
+    ["seat", "Engineers who list \"co-founder\"", "Alvin, a senior software engineer at 10x, reached Ready.", "Individual-contributor titles are held.", "v8.14"],
+    ["seat", "A parent and its companies counted separately", "NanoString, Canopy and Acuity could each send two cadences into Bruker.", "One account at the parent: at most two Ready contacts.", "v8.14"],
+    ["match", "No close report, so a generic pitch", "The all-round cadences produced most of the do-not-send rows.", "Held before the paid offering match unless a verified company signal can open the cadence.", "v8.14, v8.27"],
+    ["spend", "A spend cap that only warned", "COST_CAP_PER_1K stopped the judge and rewrites but not the run.", "Enforced at $0.80 per 1,000 prospects.", "v8.14"],
+    ["spend", "An install that half-applies", "A wrong or stale file could leave the tool in a mixed state.", "The installer checks every file's header, runs every test built from these rows, and puts every file back if one fails.", "v8.14"]
+  ];
+
+  // 100 prospects, shaped like the fifth run: 20 stopped by free checks, 38 at the seat gate, 15 at report match, 1 at the quality review, 26 Ready
+  const FATE = [];
+  const add = (n, exit, cls, desc = false) => { for (let i = 0; i < n; i++) FATE.push({ exit, cls, desc }); };
+  add(4, 1, 'reject', true); add(16, 1, 'reject');
+  add(7, 2, 'hold', true); add(31, 2, 'hold');
+  add(2, 4, 'hold', true); add(13, 4, 'hold');
+  add(1, 8, 'hold');
+  add(6, 99, 'ready', true); add(20, 99, 'ready');
+  const LAST = STEPS.length - 1;
+
+  // ---------- the run (step view) ----------
+  const sieve = document.getElementById('sieve');
+  const runCount = document.getElementById('runCount');
+  const colW = () => sieve.clientWidth / STEPS.length;
+  const gates = STEPS.map((s, i) => {
+    const g = document.createElement('div');
+    g.className = 'gate';
+    g.innerHTML = `<button type="button" class="gate-label" aria-label="How step ${i + 1}, ${esc(s.short)}, decides">${i + 1}. ${esc(s.short)}</button>`;
+    g.addEventListener('click', () => userGo(i));
+    sieve.appendChild(g);
+    return g;
+  });
+  const line = document.createElement('div'); line.className = 'bin-line'; sieve.appendChild(line);
+  const binNote = document.createElement('div'); binNote.className = 'bin-note'; binNote.textContent = 'stopped at this step'; sieve.appendChild(binNote);
+  const binIndex = [];
+  const dots = FATE.map((f, i) => {
+    const d = document.createElement('button');
+    d.type = 'button'; d.className = 'dot'; d.tabIndex = -1;
+    d.addEventListener('click', (ev) => { ev.stopPropagation(); dotClick(i); });
+    sieve.appendChild(d);
+    return d;
+  });
+  let pickedDot = -1;
+  const flowOrder = FATE.map((f, i) => i).sort((a, b) => Number(FATE[b].desc) - Number(FATE[a].desc));
+
+  function layout(stage) {
+    const w = colW();
+    gates.forEach((g, i) => { g.style.left = `${i * w}px`; g.style.width = `${w}px`; g.classList.toggle('active', i === stage); });
+    const perRow = Math.max(4, Math.floor((w - 14) / 12));
+    const binCount = {};
+    let flow = 0;
+    let remaining = 0;
+    flowOrder.forEach((i) => {
+      const f = FATE[i];
+      const d = dots[i];
+      let x; let y;
+      if (f.exit <= stage) {
+        const k = binCount[f.exit] = (binCount[f.exit] || 0) + 1;
+        binIndex[i] = k - 1;
+        x = f.exit * w + 8 + ((k - 1) % perRow) * 12;
+        y = 252 + Math.floor((k - 1) / perRow) * 12;
+        d.className = `dot ${f.cls}`;
+        d.setAttribute('aria-label', `stopped at step ${f.exit + 1}`);
+      } else {
+        remaining += 1; flow += 1;
+        binIndex[i] = flow - 1;
+        x = stage * w + 8 + ((flow - 1) % perRow) * 12;
+        y = 42 + Math.floor((flow - 1) / perRow) * 12;
+        d.className = stage === LAST ? 'dot ready' : (f.desc ? 'dot described' : 'dot');
+        d.setAttribute('aria-label', stage === LAST ? 'Ready' : `still in the run after step ${stage + 1}${f.desc ? ', website blocked us, described by ChatGPT' : ''}`);
+      }
+      if (i === pickedDot) d.classList.add('picked');
+      d.style.transform = `translate(${x}px, ${y}px)`;
+    });
+    if (view !== 'steps') return;
+    runCount.innerHTML = stage === LAST
+      ? `<strong>${remaining}</strong> of 100 are Ready, ${FATE.filter((f) => f.desc && f.exit === 99).length} of them from companies whose website blocked us`
+      : `<strong>${remaining}</strong> of 100 still in the run after step ${stage + 1}`;
+  }
+
+  // ---------- how a step decided ----------
+  const dTitle = document.getElementById('dTitle');
+  const dQ = document.getElementById('dQ');
+  const dRules = document.getElementById('dRules');
+  const dEx = document.getElementById('dEx');
+  const dGrid = document.getElementById('dGrid');
+  function renderDecide(i, openIndex = 0) {
+    const d = DECIDE[i];
+    dTitle.textContent = `How step ${i + 1} decides: ${STEPS[i].short}`;
+    dQ.textContent = d.q;
+    dRules.innerHTML = d.rules.map(([cond, out, tone]) => `<li><span>${esc(cond)}</span><span class="pill t-${tone}">${esc(out)}</span></li>`).join('');
+    dEx.innerHTML = d.ex.map((e, k) => `
+      <div class="ex${k === openIndex ? ' open' : ''}">
+        <button type="button" aria-expanded="${k === openIndex}"><span class="who">${esc(e.who)} <small>at ${esc(e.co)}</small></span><span class="pill t-${e.tone}">${esc(e.out)}</span></button>
+        <div class="trace"><dl>${e.trace.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl></div>
+      </div>`).join('');
+    dEx.querySelectorAll('.ex').forEach((box) => {
+      box.querySelector('button').addEventListener('click', () => {
+        const open = !box.classList.contains('open');
+        dEx.querySelectorAll('.ex').forEach((b) => { b.classList.remove('open'); b.querySelector('button').setAttribute('aria-expanded', 'false'); });
+        if (open) { box.classList.add('open'); box.querySelector('button').setAttribute('aria-expanded', 'true'); }
+      });
+    });
+  }
+  function swapDecide(i, openIndex) {
+    if (reduce) { renderDecide(i, openIndex); return; }
+    dGrid.classList.add('swap');
+    setTimeout(() => { renderDecide(i, openIndex); dGrid.classList.remove('swap'); }, 150);
+  }
+
+  // ---------- steps panel ----------
+  const list = document.getElementById('stepList');
+  const detail = document.getElementById('detail');
+  const prev = document.getElementById('prev');
+  const next = document.getElementById('next');
+  let current = 0;
+  STEPS.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button" data-i="${i}"><span class="n">${i + 1}</span><span>${esc(s.title)}</span></button>`;
+    list.appendChild(li);
+  });
+  list.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) userGo(Number(b.dataset.i)); });
+  prev.addEventListener('click', () => userGo(current - 1));
+  next.addEventListener('click', () => userGo(current + 1));
+  function renderDetail(i) {
+    const s = STEPS[i];
+    detail.innerHTML = `<h3>${i + 1}. ${esc(s.title)}</h3><div class="who">${esc(s.who)}</div><p>${esc(s.what)}</p>
+      <h3 style="font-size:1rem; margin-top:18px">What is checked</h3><ul class="checks">${s.checks.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
+      <div class="holds ${s.tone === 'none' || s.tone === 'ready' ? 'none' : ''}">${esc(s.holds)}</div>`;
+  }
+  function go(i, { swap = true, openIndex = 0 } = {}) {
+    current = Math.max(0, Math.min(LAST, i));
+    list.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-current', k === current ? 'step' : 'false'));
+    prev.disabled = current === 0;
+    next.disabled = current === LAST;
+    if (swap && !reduce) {
+      detail.classList.add('swap');
+      setTimeout(() => { renderDetail(current); detail.classList.remove('swap'); }, 160);
+      swapDecide(current, openIndex);
+    } else { renderDetail(current); renderDecide(current, openIndex); }
+    layout(current);
+  }
+  let timer = null;
+  function userGo(i, opts = {}) { clearInterval(timer); if (opts.keepDot !== true) pickedDot = -1; go(i, opts); }
+  function dotClick(i) {
+    const f = FATE[i];
+    const stoppedHere = f.exit <= current;
+    if (f.desc && !stoppedHere && current < LAST) {
+      pickedDot = i;
+      const pool = DECIDE[0].ex.map((e, k) => [e, k]).filter(([e]) => /ChatGPT|described/.test(e.out));
+      userGo(0, { openIndex: pool.length ? pool[binIndex[i] % pool.length][1] : 0, keepDot: true });
+      document.getElementById('decide').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
+      return;
+    }
+    const step = f.exit === 99 ? LAST : Math.min(f.exit, LAST);
+    const atStep = f.exit <= current || current === LAST ? step : current;
+    const pool = DECIDE[atStep].ex.map((e, k) => [e, k]).filter(([e]) => (stoppedHere || f.exit === 99) ? e.tone !== 'go' : e.tone === 'go' || e.tone === 'fix');
+    pickedDot = i;
+    userGo(atStep, { openIndex: pool.length ? pool[binIndex[i] % pool.length][1] : 0, keepDot: true });
+    document.getElementById('decide').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
+  }
+  function play() {
+    clearInterval(timer);
+    pickedDot = -1;
+    if (reduce) { go(LAST, { swap: false }); return; }
+    let i = 0;
+    go(0, { swap: false });
+    timer = setInterval(() => { i += 1; if (i > LAST) { clearInterval(timer); return; } go(i, { swap: false }); }, 700);
+  }
+  document.getElementById('replay').addEventListener('click', play);
+  window.addEventListener('resize', () => { if (view === 'steps') layout(current); });
+  requestAnimationFrame(() => { layout(0); setTimeout(play, 300); });
+
+  const ladder = document.getElementById('ladder');
+  if (reduce || !('IntersectionObserver' in window)) ladder.classList.add('live');
+  else {
+    const io = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { ladder.classList.add('live'); io.disconnect(); } }, { threshold: 0.4 });
+    io.observe(ladder);
+  }
+
+  // ---------- prospect flow: an animated flowchart ----------
+  const stepView = document.getElementById('stepView');
+  const flowView = document.getElementById('flowView');
+  const vSteps = document.getElementById('vSteps');
+  const vFlow = document.getElementById('vFlow');
+  const replayBtn = document.getElementById('replay');
+  const fchart = document.getElementById('fchart');
+  const fNote = document.getElementById('fNote');
+  const fpick = document.getElementById('fpick');
+  const ROW = 92; const NODE_X = 40; const NODE_W = 300; const NODE_H = 68; const OUT_X = 430; const TOP = 14;
+  const nodeY = (i) => TOP + i * ROW;
+  const spineX = NODE_X + 28 + 2 + 12; // under the number badge
+  const WORD = { go: 'Passed', fix: 'Caught and corrected, carried on', hold: 'Held', reject: 'Stopped', ready: 'Ready', skip: 'Not reached' };
+  const COLOR = { go: 'ink', fix: 'model', hold: 'hold', reject: 'reject', ready: 'ready', skip: 'muted' };
+  const stepsOf = (p) => STEPS.map((s, i) => p.steps[i] || ['skip', 'not reached', 'The row stopped at an earlier step, so this step never ran and nothing was spent on it.']);
+  let fSel = 0; let flowBuilt = false; let playId = 0;
+  let nodes = []; let outs = []; let spines = []; let branches = []; let arrows = []; let loops = []; let token = null;
+
+  function buildChart() {
+    const h = TOP + LAST * ROW + NODE_H + 20;
+    fchart.style.height = `${h}px`;
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 780 ${h}`);
+    svg.setAttribute('aria-hidden', 'true');
+    spines = STEPS.slice(0, -1).map((s, i) => {
+      const p = document.createElementNS(svgNS, 'path');
+      p.setAttribute('class', 'spine');
+      p.setAttribute('d', `M ${spineX} ${nodeY(i) + NODE_H} L ${spineX} ${nodeY(i + 1)}`);
+      svg.appendChild(p);
+      return p;
+    });
+    branches = STEPS.map((s, i) => {
+      const y = nodeY(i) + NODE_H / 2;
+      const p = document.createElementNS(svgNS, 'path');
+      p.setAttribute('class', 'branch');
+      p.setAttribute('d', `M ${NODE_X + NODE_W} ${y} L ${OUT_X - 10} ${y}`);
+      svg.appendChild(p);
+      const a = document.createElementNS(svgNS, 'path');
+      a.setAttribute('class', 'arrow');
+      a.setAttribute('d', `M ${OUT_X - 12} ${y - 6} L ${OUT_X - 1} ${y} L ${OUT_X - 12} ${y + 6} Z`);
+      svg.appendChild(a);
+      arrows[i] = a;
+      return p;
+    });
+    loops = STEPS.map((s, i) => {
+      const y = nodeY(i) + NODE_H / 2;
+      const p = document.createElementNS(svgNS, 'path');
+      p.setAttribute('class', 'loop');
+      p.setAttribute('d', `M ${NODE_X} ${y - 14} C ${NODE_X - 34} ${y - 14}, ${NODE_X - 34} ${y + 14}, ${NODE_X} ${y + 14}`);
+      p.setAttribute('marker-end', 'url(#lhead)');
+      svg.appendChild(p);
+      return p;
+    });
+    const defs = document.createElementNS(svgNS, 'defs');
+    defs.innerHTML = `<marker id="lhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5B4FCF"/></marker>`;
+    svg.appendChild(defs);
+    fchart.appendChild(svg);
+    nodes = STEPS.map((s, i) => {
+      const n = document.createElement('button');
+      n.type = 'button'; n.className = 'node'; n.style.top = `${nodeY(i)}px`;
+      n.innerHTML = `<span class="num">${i + 1}</span><span class="ntitle">${i + 1}. ${esc(s.short)}</span><span class="nout"></span>`;
+      n.addEventListener('click', () => { playId += 1; showNode(i); });
+      fchart.appendChild(n);
+      return n;
+    });
+    outs = STEPS.map((s, i) => {
+      const o = document.createElement('div');
+      o.className = `outbox${i === LAST ? ' endbox' : ''}`; o.style.top = `${nodeY(i)}px`;
+      o.innerHTML = i === LAST ? '<span class="otitle">Ready</span><span>Written to the sheet. Only your sending tool sends.</span>' : `<span class="otitle">${esc(s.tone === 'reject' ? 'Rejected or not a fit' : s.tone === 'hold' ? 'Hold, with the reason' : 'Corrected by code, not stopped')}</span><span></span>`;
+      fchart.appendChild(o);
+      return o;
+    });
+    token = document.createElement('div');
+    token.className = 'token';
+    fchart.appendChild(token);
+  }
+  const tokenAt = (i) => `translate(${spineX - 9}px, ${nodeY(i) + NODE_H / 2 - 9}px)`;
+  const tokenOut = (i) => `translate(${OUT_X + 14}px, ${nodeY(i) + NODE_H / 2 - 9}px)`;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, reduce ? 0 : ms));
+
+  function resetChart(p) {
+    const st = stepsOf(p);
+    const exitAt = st.findIndex(([s]) => s === 'hold' || s === 'reject');
+    st.forEach(([s, label], i) => {
+      nodes[i].className = `node s-${s}`;
+      nodes[i].querySelector('.nout').textContent = label;
+      nodes[i].setAttribute('aria-label', `Step ${i + 1}, ${STEPS[i].short}: ${WORD[s]}, ${label}`);
+      branches[i].setAttribute('class', 'branch'); arrows[i].setAttribute('class', 'arrow'); loops[i].setAttribute('class', 'loop');
+      outs[i].className = `outbox${i === LAST ? ' endbox' : ''}`;
+      if (i !== LAST) outs[i].querySelector('span:last-child').textContent = '';
+      if (i < LAST) spines[i].setAttribute('class', `spine${exitAt >= 0 && i >= exitAt ? ' off' : ''}`);
+    });
+    token.className = 'token';
+    token.style.transform = tokenAt(0);
+  }
+
+  function showNode(i) {
+    const p = FLOW[fSel];
+    const [s, label, text] = stepsOf(p)[i];
+    nodes.forEach((n, k) => n.classList.toggle('on', k === i));
+    token.className = `token ${s === 'go' ? '' : s}`;
+    token.style.transform = (s === 'hold' || s === 'reject' || s === 'ready') ? tokenOut(i) : tokenAt(i);
+    if (s === 'hold' || s === 'reject') {
+      branches[i].setAttribute('class', `branch on${s === 'reject' ? ' reject' : ''}`); arrows[i].setAttribute('class', `arrow on${s === 'reject' ? ' reject' : ''}`);
+      outs[i].className = `outbox on${s === 'reject' ? ' reject' : ''}`;
+      outs[i].querySelector('.otitle').textContent = p.out;
+      outs[i].querySelector('span:last-child').textContent = text;
+    }
+    if (s === 'ready') outs[i].classList.add('on');
+    if (s === 'fix') loops[i].setAttribute('class', 'loop on');
+    fNote.innerHTML = `<h3>${i + 1}. ${esc(STEPS[i].title)}</h3><div class="src" style="color:var(--${COLOR[s]})">${esc(WORD[s])}: ${esc(label)}</div>
+      <p class="small" style="color:var(--ink)">${esc(text)}</p><p class="small">${esc(STEPS[i].who)}</p>`;
+  }
+  function showSummary() {
+    const p = FLOW[fSel];
+    fNote.innerHTML = `<h3>${esc(p.out)}</h3><div class="src" style="color:var(--${COLOR[p.tone] || 'ink'})">${esc(p.who)}, ${esc(p.title)}</div>
+      <p class="small" style="color:var(--ink)">${esc(p.sum)}</p><p class="small">Press "Play this prospect" to walk the marker through the flowchart, or click any step.</p>`;
+  }
+  function selectFlow(k, autoplay = false) {
+    playId += 1;
+    fSel = (k + FLOW.length) % FLOW.length;
+    const p = FLOW[fSel];
+    document.getElementById('fName').textContent = `${p.who}, ${p.co}`;
+    document.getElementById('fMeta').textContent = p.title;
+    fpick.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-pressed', String(i === fSel)));
+    resetChart(p);
+    showSummary();
+    if (autoplay) playFlow();
+  }
+  async function playFlow() {
+    const id = ++playId;
+    const p = FLOW[fSel];
+    const st = stepsOf(p);
+    resetChart(p);
+    const end = st.findIndex(([s]) => s === 'hold' || s === 'reject' || s === 'ready');
+    const last = end < 0 ? LAST : end;
+    for (let i = 0; i <= last; i++) {
+      if (id !== playId) return;
+      const s = st[i][0];
+      if (s === 'hold' || s === 'reject' || s === 'ready') {
+        // arrive at the node first, then branch out
+        token.className = 'token';
+        token.style.transform = tokenAt(i);
+        nodes.forEach((n, k) => n.classList.toggle('on', k === i));
+        await sleep(650);
+        if (id !== playId) return;
+      }
+      showNode(i);
+      await sleep(s === 'fix' ? 1500 : 1050);
+    }
+  }
+  function buildPicker() {
+    fpick.innerHTML = FLOW.map((p, k) => `<button type="button" data-k="${k}" aria-pressed="${k === 0}"><i style="background:var(--${COLOR[p.tone]})"></i>${esc(p.who)}</button>`).join('');
+    fpick.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => selectFlow(Number(b.dataset.k), true)));
+  }
+  function switchView(v) {
+    view = v;
+    const flow = v === 'flow';
+    stepView.hidden = flow; flowView.hidden = !flow;
+    vSteps.setAttribute('aria-pressed', String(!flow)); vFlow.setAttribute('aria-pressed', String(flow));
+    replayBtn.hidden = flow;
+    if (flow) {
+      clearInterval(timer);
+      if (!flowBuilt) { buildChart(); buildPicker(); flowBuilt = true; selectFlow(0, true); }
+      runCount.innerHTML = `<strong>${FLOW.length}</strong> real prospects, followed from the sheet to the end`;
+    } else { playId += 1; layout(current); }
+  }
+  vSteps.addEventListener('click', () => switchView('steps'));
+  vFlow.addEventListener('click', () => switchView('flow'));
+  document.getElementById('fPrev').addEventListener('click', () => selectFlow(fSel - 1, true));
+  document.getElementById('fNext').addEventListener('click', () => selectFlow(fSel + 1, true));
+  document.getElementById('fPlay').addEventListener('click', playFlow);
+  document.getElementById('jumpFlow').addEventListener('click', (e) => { e.preventDefault(); switchView('flow'); document.getElementById('run').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); });
+
+  // ---------- cases handled ----------
+  const chips = document.getElementById('chips');
+  const casesEl = document.getElementById('cases');
+  const caseCount = document.getElementById('caseCount');
+  let cat = 'all';
+  const catLabel = Object.fromEntries(CATS);
+  chips.innerHTML = CATS.map(([k, label]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${k === 'all'}">${esc(label)}<span class="cnt">${k === 'all' ? CASES.length : CASES.filter((c) => c[0] === k).length}</span></button>`).join('');
+  chips.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    cat = b.dataset.k;
+    chips.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    renderCases();
+  });
+  function renderCases() {
+    const shown = CASES.filter((c) => cat === 'all' || c[0] === cat);
+    const fp = shown.filter((c) => /fix pack|v8\.3/.test(c[4])).length;
+    caseCount.textContent = `Showing ${shown.length} of ${CASES.length} cases${fp ? `; ${fp} of them fixed since v8.14` : ''}.`;
+    casesEl.innerHTML = shown.map(([k, title, example, now, ver]) => `
+      <div class="case"><div class="cat">${esc(catLabel[k])}</div>
+        <div class="top"><h3>${esc(title)}</h3><span class="ver${/fix pack|v8\.3/.test(ver) ? ' fp' : ''}">${esc(ver)}</span></div>
+        <dl><dt>Real case</dt><dd>${esc(example)}</dd><dt>Now</dt><dd>${esc(now)}</dd></dl></div>`).join('');
+  }
+  renderCases();
+
+  // ---------- anatomy (Scott Phillips, fifth run; closing lines as v8.39 builds them) ----------
+  const SRC = { page: 'From the report page', model: 'Written by the model', code: 'Built by code' };
+  const EMAILS = [
+    { tab: 'E1', subject: [['code', 'U.S. spatial biology outlook for Spatial Genomics', 'Subject', 'Built from the market and the company name when the model\'s candidates carry news, numbers or stock phrases.']],
+      paras: [
+        [['code', 'Hi Scott,', 'Greeting', 'The first name exactly. No sign-off in E1; the sending tool adds the signature.']],
+        [['code', 'One question for Spatial Genomics may be ', 'Opening frame', 'One of five frames. After a news opener the company is not named again and "may" appears once.'],
+         ['model', 'which applications are most appealing to its target buyers.', 'The opening question', 'Tied to a decision this role owns. "Should", "must" and "needs to" become "could"; a product the company does not describe becomes "its products and services"; never a claim.']],
+        [['page', 'Our latest analysis of the U.S. spatial biology market looks at end users such as Pharma & Biotech and applications like Oncology and Immunology.', 'What the report covers', 'Only breakdowns and examples the page lists; a code-built version names at most two breakdowns with two examples each. "Latest" only when the page\'s base year is last year or newer.'],
+         ['page', ' It finds that a rise in R&D funding is accelerating the adoption of spatial biology platforms, especially in cancer and immune-related research.', 'The first finding', 'The most relevant finding for this company, in the page\'s words. A tail the page does not back is cut; a sentence that points at nothing is replaced; a colleague never gets the same one.']],
+        [['model', 'For your sales team, this could help them see which end users are increasing their investments and how that aligns with emerging applications.', 'The benefit', 'Starts "For your" plus the area of work, uses "could", gives no advice.']],
+        [['code', 'Would understanding what is driving demand in the U.S. spatial biology market be relevant to your sales priorities?', 'The closing line (v8.39)', 'Built from the E1 finding\'s card (drivers → "what is driving demand"), the report market and the title (Sales → "your sales priorities"). The only question mark in E1 besides the opening question.']]
+      ] },
+    { tab: 'E2', paras: [
+        [['code', 'Hi Scott,', 'Greeting', 'Same rules as E1.']],
+        [['page', 'Our analysis also finds that substantial upfront costs for advanced instruments and ongoing expenses for specialized reagents may limit wider adoption.', 'The second finding', 'A card of its own, never the one E1 used. Lead-in words removed, the region named, "leveraging" swapped out.']],
+        [['code', 'For Spatial Genomics, one question this raises is how substantial upfront costs could shape its own plans.', 'The question it raises', 'Shares a word with the finding and is built from its subject. Never advice, never a generic line.']],
+        [['code', 'Would exploring the report\'s coverage of U.S. spatial biology demand by end user and by application be useful to your team?', 'The closing line (v8.39)', 'The two dimensions come from the page\'s own coverage line (region excluded), with nested brackets stripped; a dimension must be a plain label or it is not used.']]
+      ] },
+    { tab: 'E3', paras: [
+        [['code', 'Hi Scott,', 'Greeting', 'Same rules as E1.']],
+        [['page', 'One more point from the analysis: the U.S. spatial biology market remains moderately consolidated, with larger companies acquiring smaller firms to enhance their multi-omic platforms.', 'The third finding', 'From the third card: never the one E1 or E2 used, never a coverage-only line. With nothing left on the page, the row is held.']],
+        [['code', 'The full analysis also covers demand by end user and by application.', 'What the full analysis covers', 'Topics taken from the page coverage. Replaces the old "A short call could cover..." line; no deliverable is promised.']],
+        [['code', 'Would the full U.S. Spatial Biology market analysis be relevant to your sales planning?', 'The closing line (v8.39)', 'The commercial object is the report itself; the role phrase comes from the title.']]
+      ] },
+    { tab: 'E4', paras: [
+        [['code', 'Hi Scott,', 'Greeting', 'Same rules as E1.']],
+        [['code', 'Would it make sense to reconnect about the U.S. Spatial Biology market analysis when this becomes a priority?', 'The commercial close (v8.39)', 'Assumes nothing about the reader; names the analysis; leaves the timing to them.']],
+        [['code', 'If it is easier, you can get in touch with our team here: https://www.kingsresearch.com/connect', 'The link to our team', 'The only link in the cadence, and the email must end with it.']]
+      ] }
+  ];
+  const tabs = document.getElementById('tabs');
+  const email = document.getElementById('email');
+  const note = document.getElementById('note');
+  EMAILS.forEach((e, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tab'; b.setAttribute('role', 'tab'); b.textContent = e.tab;
+    b.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+    b.addEventListener('click', () => showEmail(i));
+    tabs.appendChild(b);
+  });
+  const segHtml = ([src, text], key) => `<span class="seg ${src}" tabindex="0" role="button" data-key="${key}">${esc(text)}</span>`;
+  function showEmail(i) {
+    tabs.querySelectorAll('.tab').forEach((t, k) => t.setAttribute('aria-selected', k === i ? 'true' : 'false'));
+    const e = EMAILS[i];
+    const segs = [];
+    let html = '';
+    if (e.subject) html += `<div class="subj">Subject: ${e.subject.map((s) => { segs.push(s); return segHtml(s, segs.length - 1); }).join('')}</div>`;
+    html += e.paras.map((p) => `<p>${p.map((s) => { segs.push(s); return segHtml(s, segs.length - 1); }).join('')}</p>`).join('');
+    email.innerHTML = html;
+    email.querySelectorAll('.seg').forEach((el) => {
+      const pick = () => {
+        email.querySelectorAll('.seg').forEach((x) => x.classList.remove('picked'));
+        el.classList.add('picked');
+        const [src, , name, why] = segs[Number(el.dataset.key)];
+        note.innerHTML = `<h3>${esc(name)}</h3><div class="src" style="color:var(--${src})">${SRC[src]}</div><p class="small" style="color:var(--ink)">${esc(why)}</p>
+          <p class="small">${src === 'page' ? 'Then checked by the fact guard against the report page.' : src === 'model' ? 'Then checked by the rule checks, the fact guard and the quality review.' : 'Built from the page or from fixed wording, so a false flag on it is dismissed by code.'}</p>`;
+      };
+      el.addEventListener('click', pick);
+      el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); } });
+    });
+  }
+  document.getElementById('showSrc').addEventListener('change', (e) => email.classList.toggle('show', e.target.checked));
+  showEmail(0);
+
+  // ---------- closing lines (v8.39): the chain, played for a real row ----------
+  (() => {
+    const L = 'https://www.kingsresearch.com/connect';
+    const EX = [
+      { who: 'Steve Thalmann', co: 'Oneida Molded Plastics', title: 'President & CEO', signal: 'none recent (website profile)', match: 'Report: Plastic Contract Manufacturing (company fit 0.97)', value: 'E1 finding card: drivers → what is driving demand', role: 'executive → your team\'s priorities / planning',
+        m: ['Would understanding what is driving demand in the plastic contract manufacturing market be relevant to your team\'s priorities?', 'Would exploring the report\'s coverage of plastic contract manufacturing demand by product type and by application be useful to your team?', 'Would the full Plastic Contract Manufacturing market analysis be relevant to your team\'s planning?', 'Would it make sense to reconnect about the Plastic Contract Manufacturing market analysis when this becomes a priority?'],
+        p: ['[value from drivers card] + [role priorities]', 'coverage line: product type, application (region excluded; nested brackets stripped)', 'the full [Market] market analysis + [role work]', 'reconnect about the [Market] market analysis + link'] },
+      { who: 'Randy Pogue', co: 'AmSty', title: 'President and CEO', signal: 'none recent', match: 'Report: Polystyrene (0.98)', value: 'drivers → what is driving demand', role: 'executive',
+        m: ['Would understanding what is driving demand in the polystyrene market be relevant to your team\'s priorities?', 'Would exploring the report\'s coverage of polystyrene demand by application be useful to your team?', 'Would the full Polystyrene market analysis be relevant to your team\'s planning?', 'Would it make sense to reconnect about the Polystyrene market analysis when this becomes a priority?'],
+        p: ['[value from drivers card]', 'one dimension only: the page covers application and region', 'the full [Market] market analysis', 'reconnect + link'] },
+      { who: 'Joe Horton', co: 'Berry Global', title: 'Sales Director', signal: 'none recent', match: 'Report: Flexible Packaging (0.90)', value: 'segment:application → demand by application', role: 'sales → your sales priorities / planning',
+        m: ['Would understanding flexible packaging demand by application be relevant to your sales priorities?', 'Would exploring the report\'s coverage of flexible packaging demand by material and by product be useful to your team?', 'Would the full Flexible Packaging market analysis be relevant to your sales planning?', 'Would it make sense to reconnect about the Flexible Packaging market analysis when this becomes a priority?'],
+        p: ['[segment card] + [role]', 'coverage: material, product', 'the full [Market] market analysis + [role work]', 'reconnect + link'] },
+      { who: 'Tanja Deubner', co: 'Lanxess', title: 'Head of Commercial Marketing', signal: 'none recent', match: 'Report: Specialty Chemicals (0.95)', value: 'restraints → what is holding back demand', role: 'commercial → your sales priorities / planning',
+        m: ['Would understanding what is holding back demand in the specialty chemicals market be relevant to your sales priorities?', 'Would exploring the report\'s coverage of specialty chemicals demand by type be useful to your team?', 'Would the full Specialty Chemicals market analysis be relevant to your sales planning?', 'Would it make sense to reconnect about the Specialty Chemicals market analysis when this becomes a priority?'],
+        p: ['[value from restraints card]', 'coverage: type', 'the full [Market] market analysis', 'reconnect + link'] },
+      { who: 'Veronique Jolivet', co: 'TotalEnergies', title: 'MD & Country Chair, Marketing', signal: 'News: expands US venture with KKR (expansion)', match: 'Offering #4 Growth Opportunity → Market Attractiveness Assessment; market: renewables and electricity', value: 'family 4 → where the market offers stronger growth potential', role: 'marketing → your marketing priorities / work',
+        m: ['Would that be relevant to your marketing priorities?', 'Would exploring emerging openings and underserved segments in renewables and electricity be useful to your team?', 'Would a Market Attractiveness Assessment on the renewables and electricity market be relevant to your marketing work?', 'Would it make sense to reconnect about a Market Attractiveness Assessment on the renewables and electricity market when this becomes a priority?'],
+        p: ['short form: the benefit line above already carries the value', 'family 4 coverage phrase', 'a [matched study] on the [market] market + [role work]', 'reconnect about the study + link'] },
+      { who: 'Jonathan Savoie', co: 'Wolf Midstream', title: 'VP Corporate Development & Strategy', signal: 'News: Phase Three expansion (expansion)', match: 'Offering #11 Investment & Strategic → Market Attractiveness Assessment; market: oil and gas', value: 'family 11 → attractiveness and investment trends', role: 'strategy → your strategy priorities / work',
+        m: ['Would that be relevant to your strategy priorities?', 'Would exploring investment developments and market opportunities in oil and gas be useful to your team?', 'Would a Market Attractiveness Assessment on the oil and gas market be relevant to your strategy work?', 'Would it make sense to reconnect about a Market Attractiveness Assessment on the oil and gas market when this becomes a priority?'],
+        p: ['short form after the benefit line', 'family 11 coverage phrase', 'a [matched study] on the [market] market', 'reconnect + link'] },
+      { who: 'Tom Shin', co: 'LG Chem', title: 'Marketing Director', signal: 'News: partnership with Volkswagen (partnership)', match: 'Offering #15 Consumer & Brand → Brand Perception (picker over-reach; v8.40 moves partnerships to #8)', value: 'family 15 → how buyers see the brands', role: 'marketing',
+        m: ['Would that be relevant to your marketing priorities?', 'Would exploring consumer trends and brand positioning in sustainability materials be useful to your team?', 'Would a Brand Perception study on the sustainability materials market be relevant to your marketing work?', 'Would it make sense to reconnect about a Brand Perception study on the sustainability materials market when this becomes a priority?'],
+        p: ['short form after the benefit line', 'family 15 coverage phrase', 'bare study name + "study"', 'reconnect + link'] },
+      { who: 'Michael Dragoo', co: 'Clack', title: 'President and COO', signal: 'Website: new shutoff valve and drain elbow (launch)', match: 'Offering #4 → Adjacent Market Assessment; market line was a writer\'s phrase, so company-anchored', value: 'family 4, company form → openings next to Clack\'s current markets', role: 'executive',
+        m: ['Would that be relevant to your team\'s priorities?', 'Would exploring which openings next to Clack\'s current markets are most attractive be useful to your team?', 'Would an Adjacent Market Assessment for Clack be relevant to your team\'s planning?', 'Would it make sense to reconnect about an Adjacent Market Assessment for Clack when this becomes a priority?'],
+        p: ['short form after the benefit line', 'company-anchored phrase: no real market name', 'a [study] for [Company]', 'reconnect + link'] }
+    ];
+    const pick = document.getElementById('ctaPick'), cnodes = [...document.querySelectorAll('#ctaChain .cta-node')], mails = [...document.querySelectorAll('#ctaMails .cta-mail')], meta = document.getElementById('ctaMeta');
+    let cur = 0, timers = [];
+    const stop = () => { timers.forEach(clearTimeout); timers = []; };
+    const wait = (ms, f) => timers.push(setTimeout(f, reduce ? 0 : ms));
+    function show(i, play) {
+      stop(); cur = i; const x = EX[i];
+      [...pick.children].forEach((b, k) => b.setAttribute('aria-pressed', String(k === i)));
+      meta.textContent = x.title + ' · ' + x.co;
+      const vals = [x.who + ', ' + x.co, x.signal, x.match, x.value, x.role];
+      cnodes.forEach((n, k) => { n.classList.remove('on', 'done'); n.classList.toggle('dim', play); n.querySelector('.v').textContent = vals[k]; });
+      mails.forEach((m, k) => { m.classList.toggle('on', !play); m.children[1].textContent = x.m[k] + (k === 3 ? ' + ' + L : ''); m.children[2].textContent = x.p[k]; });
+      if (!play) { cnodes.forEach((n) => n.classList.add('done')); return; }
+      cnodes.forEach((n, k) => wait(350 + k * 550, () => { cnodes.forEach((o) => o.classList.remove('on')); n.classList.add('on'); n.classList.remove('dim'); if (k) cnodes[k - 1].classList.add('done'); }));
+      mails.forEach((m, k) => wait(350 + 5 * 550 + k * 450, () => { if (k === 0) { cnodes[4].classList.add('done'); cnodes[4].classList.remove('on'); } m.classList.add('on'); }));
+    }
+    EX.forEach((x, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = x.co; b.addEventListener('click', () => show(i, true)); pick.appendChild(b); });
+    document.getElementById('ctaPlay').addEventListener('click', () => show(cur, true));
+    const ctabs = [...document.querySelectorAll('#ctaTabs .tab')];
+    ctabs.forEach((t) => t.addEventListener('click', () => { ctabs.forEach((o) => o.setAttribute('aria-selected', String(o === t))); ['p1', 'p2', 'p3', 'p4', 'p5'].forEach((id) => { document.getElementById(id).hidden = id !== t.dataset.p; }); }));
+    show(0, false);
+    const sec = document.getElementById('cta');
+    if (!reduce && 'IntersectionObserver' in window) {
+      const io2 = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { show(0, true); io2.disconnect(); } }, { threshold: 0.3 });
+      io2.observe(sec);
+    }
+  })();
+
+  // ---------- cost ----------
+  const $ = (id) => document.getElementById(id);
+  const CAP = 0.80;
+  const money = (n) => (n < 10 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString('en-US')}`);
+  function cost() {
+    const p = Number($('prospects').value);
+    const rate = Number($('rate').value) / 100;
+    const blocked = Number($('blockedPct').value) / 100;
+    const written = p * Math.min(1, rate / 0.85);
+    const unit = { writer: 0.0006, guard: 0.00065, review: 0.0003, match: 0.0002, seat: 0.00003 };
+    const blockedCompanies = (p * blocked) / 1.6;
+    const searched = Math.min(60, blockedCompanies * 0.4);
+    const describeUsd = blockedCompanies * 0.6 * 0.0001 + searched * 0.003;
+    const total = written * (unit.guard + unit.writer + unit.review + unit.match) + p * unit.seat + describeUsd;
+    const per1k = p ? (total / p) * 1000 : 0;
+    $('prospectsOut').textContent = p.toLocaleString('en-US');
+    $('rateOut').textContent = `${Math.round(rate * 100)}%`;
+    $('blockedOut').textContent = `${Math.round(blocked * 100)}%`;
+    $('tSpend').textContent = money(total);
+    $('tReady').textContent = Math.round(p * rate).toLocaleString('en-US');
+    $('tPer').textContent = money(per1k);
+    $('tPerBox').classList.toggle('over', per1k > CAP);
+    $('tPerBox').classList.toggle('under', per1k <= CAP);
+    $('searchNote').textContent = `About ${Math.round(blockedCompanies).toLocaleString('en-US')} companies with a blocked website, described for about ${money(describeUsd)} in total. ${per1k > CAP ? `Over the $${CAP.toFixed(2)} cap: the engine would hold the last rows before any paid step.` : `Within the $${CAP.toFixed(2)} cap.`} The final reader (about $0.015 per Ready row at gpt-4o) sits outside this cap. These are estimates; the [BUDGET] line after a run is the real figure.`;
+  }
+  ['prospects', 'rate', 'blockedPct'].forEach((id) => $(id).addEventListener('input', cost));
+  cost();
+})();
+</script>
+</body>
+</html>
