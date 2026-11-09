@@ -150,6 +150,7 @@
   .feats div { padding: 14px 18px 14px 0; border-bottom: 1px solid var(--line); }
   .feats dt { font-weight: 600; margin-bottom: 2px; }
   .feats dd { margin: 0; color: var(--muted); font-size: 0.97rem; }
+  .feats div.heavy dt::after { content: "Used every week"; margin-left: 8px; font: 600 0.72rem var(--body); color: var(--green); background: var(--green-soft); padding: 2px 8px; border-radius: 999px; vertical-align: 2px; white-space: nowrap; }
   .trust { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
   .trust li { padding-left: 30px; position: relative; }
   .trust li::before { content: ""; position: absolute; left: 4px; top: 7px; width: 12px; height: 7px; border-left: 2px solid var(--green); border-bottom: 2px solid var(--green); transform: rotate(-45deg); }
@@ -254,7 +255,7 @@
     <p class="name">Himanshu Singh</p>
     <p class="role">Technology Analyst, Kings Research</p>
     <a href="https://www.linkedin.com/in/himanshu-singh-tech-analyst/" target="_blank" rel="noopener">
-      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9.75h4v11H3v-11zm7 0h3.8v1.5h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1v5.45h-4v-4.83c0-1.15-.02-2.63-1.6-2.63-1.6 0-1.85 1.25-1.85 2.55v4.91h-4v-11z"/></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9.75h4v11H3v-11zm7 0h3.8v1.5h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1v5.45h-4v-4.83c0-1.150-.02-2.630-1.6-2.630-1.6 0-1.85 1.25-1.85 2.550v4.910h-4v-11z"/></svg>
       LinkedIn
     </a>
   </div>
@@ -271,6 +272,7 @@
     local: { cls: 's-local', label: `Runs locally`, where: `Team machine` },
     testing: { cls: 's-testing', label: `In testing`, where: `Team machine` }
   };
+  const RX = 'https://ranking-analyser.vercel.app';
 
   const TOOLS = [
     {
@@ -301,26 +303,34 @@
         `Read-only: nothing in Google can be changed from the dashboard.`]
     },
     {
-      id: 'xray', name: `Ranking X-Ray`, short: `Ranking X-Ray`, team: 'content', status: 'live',
-      url: 'https://ranking-analyser.vercel.app', host: 'ranking-analyser.vercel.app',
-      summary: `Takes a report page from brief to rankings: what to write, how it compares with competitors, and where it ranks every week.`,
-      problem: [`Before writing a report page, someone had to Google the keyword, open every competitor page and compare sections, tables and word counts by hand, then guess what was missing.`,
-        `After publishing, nobody could say why a competitor still ranked above us, and rankings were checked by hand, if at all.`],
+      id: 'xray', name: `Ranking X-Ray`, short: `Ranking X-Ray`, team: 'site', status: 'live',
+      url: RX + '/bulk#csv', linkLabel: `Open Search Console tools`, host: 'ranking-analyser.vercel.app',
+      more: [{ label: `Open content brief`, url: RX + '/brief' }],
+      summary: `The team's everyday Search Console workhorse: numbers for any list of URLs, weekly reports per language site, and index status past Google's daily cap. It also writes content briefs and X-rays competitor pages.`,
+      problem: [`Search Console's own screens answer one question at a time. The performance report shows and exports at most 1,000 rows, can't take a list of URLs, and has no view per language site. Checking whether pages are indexed through Google's URL Inspection is capped at 2,000 URLs a day per property.`,
+        `So weekly reporting meant dozens of filtered exports, one URL or one language at a time, stitched together in Excel. On the content side, briefs meant opening every competitor page by hand, and nobody could say why a competitor still ranked above us.`],
       steps: [
-        [`Content brief`, `Type a keyword. It reads Google's top 10 and six tracked competitors, then writes a skeleton in the Kings Research report format with the gaps to fill.`],
-        [`Write and check`, `Paste the draft to score it against the brief; the planner adds meta tags, FAQs and schema.`],
-        [`X-ray the live page`, `Our page is compared with each competitor's on 13 weighted factors, from content depth and schema to E-E-A-T and freshness.`],
-        [`Track every Monday`, `Each brief lands in a Google Sheet that re-checks our rank and every tracked competitor's, with the change since last week.`]
+        [`Connect once`, `It reads every Search Console property the connected Google account can see. Pick one, or let it work out the property from the URLs.`],
+        [`Bulk CSV metrics`, `Upload any list of URLs, or titles with URLs. Get position, CTR, impressions and clicks for every one, for any date range and country or month on month, with each page's real title. Download the enriched CSV.`],
+        [`Weekly hreflang report`, `Load the sitemap index, where each language version is its own sitemap. Pick weeks (Monday to Sunday) or months and get clicks, impressions, CTR and position per language, with the change between periods and the top URLs. Download as Excel or CSV.`],
+        [`Index status without the daily cap`, `Start a Screaming Frog crawl from the page; an agent on the crawl machine runs it and sends back index status for every URL. Google's own URL Inspection can be added on top, with anything past its 2,000-a-day limit marked and rolled to the next run.`],
+        [`Content side`, `Content briefs from Google's top 10 and six tracked competitors, a draft check, an X-ray against competitors on 13 weighted factors, and rank tracking every Monday.`]
       ],
       features: [
-        [`What competitors miss`, `18 report sections, tables, key players, analyst byline, freshness and unanswered "People also ask" questions, checked on every competitor.`],
-        [`Figure check`, `Market size, forecast and CAGR are recomputed; competitor numbers that don't add up are flagged.`],
-        [`Our existing pages`, `Shows our pages already ranking for the keyword, so we don't compete with ourselves.`],
-        [`Search Console tools`, `A weekly hreflang report per language sitemap, bulk CSV metrics and index status.`]
+        [`Bulk CSV metrics`, `Position, CTR, impressions and clicks for any list of URLs, by date range and country, including month-on-month comparison.`, true],
+        [`Weekly hreflang report`, `Every language sitemap side by side, week by week or month on month, with totals and changes.`, true],
+        [`Index status crawl`, `Index status for every crawled URL via Screaming Frog, with no 2,000-a-day limit.`, true],
+        [`Any property`, `Works on every Search Console property the connected account can read, not one fixed site.`],
+        [`Content brief`, `A skeleton in the Kings Research format, built from Google's top 10 and what six tracked competitors cover and miss.`],
+        [`Competitor X-ray`, `Our live page against each competitor on 13 weighted factors, from depth and schema to E-E-A-T and freshness.`],
+        [`Figure check`, `Competitor market size, forecast and CAGR are recomputed; numbers that don't add up are flagged.`],
+        [`Weekly rank tracking`, `Every brief re-checked each Monday for our rank and each competitor's.`]
       ],
-      trust: [`Competitor pages that block us are marked blocked and can be pasted in, never silently skipped.`,
-        `The 13 factor weights are written down, so they can be questioned and tuned rather than taken on faith.`,
-        `Every brief is saved as a Google Doc and a row in the tracking sheet.`]
+      trust: [`Set the same date range and country in Search Console and the numbers match exactly; dates follow Search Console's own Pacific-time calendar.`,
+        `The current week or month is marked partial, and future weeks can't be picked.`,
+        `URLs past Google's inspection limit are marked "Not checked" and roll over to the next run, never guessed.`,
+        `Large sites can run one language at a time, so every request finishes inside the hosting time limit.`,
+        `Competitor pages that block us are marked blocked, not silently skipped.`]
     },
     {
       id: 'search', name: `Content Search`, short: `Content Search`, team: 'content', status: 'live',
@@ -465,16 +475,20 @@
 
   const JOBS = [
     { job: `See how a site is doing`, tool: 'dashboard', before: [`Open Search Console, then GA4, then the sitemaps`, `Export each and line the dates up in a sheet`, `Screenshot it for the team, already days old`], now: `One link for every property, the same dates everywhere, and a Source button on every number.` },
-    { job: `Plan a new report page`, tool: 'xray', before: [`Google the keyword and open every competitor page`, `Compare sections, tables and word counts by hand`, `Guess what to add, then check ranks manually`], now: `A brief with the skeleton, competitor gaps and targets, then weekly rank tracking in a sheet.` },
-    { job: `Find every em dash on the site`, tool: 'search', before: [`Try a Google site: search, which ignores punctuation`, `Open pages one by one and use Ctrl+F`, `Lose track of which pages were checked`], now: `Every page with that exact character, highlighted in context, in one run and one CSV.` },
+    { job: `Get Search Console numbers for 500 URLs`, tool: 'xray', url: RX + '/bulk#csv', linkLabel: `Open bulk CSV`, before: [`Filter Search Console one URL at a time`, `Hit the 1,000-row export limit and split the work`, `Paste every export into one sheet by hand`], now: `Upload the list once and get position, CTR, impressions and clicks for every URL, for any dates or country, or month on month.` },
+    { job: `Report each language site, week by week`, tool: 'xray', url: RX + '/bulk#hreflang', linkLabel: `Open hreflang report`, before: [`Filter Search Console by each language folder`, `Repeat for every week and export`, `Build the comparison in Excel`], now: `Every language sitemap side by side, week by week or month on month, as one Excel report.` },
+    { job: `Check index status for the whole site`, tool: 'xray', url: RX + '/bulk#crawl', linkLabel: `Open index status crawl`, before: [`Inspect URLs one by one in Search Console`, `Stop at Google's 2,000-a-day limit`, `Pick up again tomorrow and keep a list by hand`], now: `A Screaming Frog crawl started from the page returns index status for every URL, with no daily cap.` },
     { job: `Fix thousands of 404s`, tool: 'redirect', before: [`Open each dead URL and guess what it was`, `Search the site for a replacement, one at a time`, `Retype the list into the server config`], now: `Every 404 matched to its closest live page with a confidence score, exported as ready-to-paste redirect rules.` },
     { job: `Audit titles and links in a section`, tool: 'scraper', before: [`Open the sitemap XML and copy the URLs out`, `Visit each page to read its title and headings`, `Count links by eye, menus included`], now: `One Excel per section with titles, descriptions, headings, status codes and only the in-article links.` },
+    { job: `Find every em dash on the site`, tool: 'search', before: [`Try a Google site: search, which ignores punctuation`, `Open pages one by one and use Ctrl+F`, `Lose track of which pages were checked`], now: `Every page with that exact character, highlighted in context, in one run and one CSV.` },
+    { job: `Plan a new report page`, tool: 'xray', url: RX + '/brief', linkLabel: `Open content brief`, before: [`Google the keyword and open every competitor page`, `Compare sections, tables and word counts by hand`, `Guess what to add, then check ranks manually`], now: `A brief with the skeleton, competitor gaps and targets, then weekly rank tracking in a sheet.` },
     { job: `Add internal links to an article`, tool: 'interlinker', before: [`Link the reports you happen to remember`, `Search the site for anything else`, `Type URLs by hand and hope they still work`], now: `10 to 25 suggestions from every live page, with anchors taken from the article, copied as HTML.` },
     { job: `Find companies worth contacting`, tool: 'prospect', before: [`Work from a bought list with no reason to call`, `Search the news for each company`, `Look up the right person and their email`], now: `A ranked sheet of companies with fresh news, the matching report and service, and the people to contact.` },
     { job: `Write outreach for 1,000 prospects`, tool: 'cadence', before: [`Research each prospect and find a relevant report`, `Write four emails per person by hand`, `Re-read everything for wrong facts and names`], now: `A checked four-email cadence per prospect, built from a real report page, or held with the reason it isn't safe.` }
   ];
 
   const linkFor = (t, cls) => `<a class="btn ${cls || ''}" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.linkLabel || 'Open tool')} ${EXT}</a>`;
+  const linksFor = (t) => linkFor(t) + (t.more || []).map((m) => linkFor({ url: m.url, linkLabel: m.label }, 'ghost')).join('');
   const pill = (t) => `<span class="pill ${STATUS[t.status].cls}" data-pill="${t.id}"><i></i>${STATUS[t.status].label}</span>`;
 
   /* ---------- job picker ---------- */
@@ -483,12 +497,13 @@
   jobList.innerHTML = JOBS.map((j, i) => `<li><button type="button" data-job="${i}" aria-pressed="false">${esc(j.job)}<small>${esc(byId[j.tool].short)}</small></button></li>`).join('');
   function showJob(i, instant) {
     const j = JOBS[i], t = byId[j.tool];
+    const target = j.url ? { url: j.url, linkLabel: j.linkLabel } : t;
     jobList.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.job) === i)));
     const render = () => {
       answer.innerHTML = `
         <div class="before"><h3>Before</h3><ol>${j.before.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></div>
         <div class="now"><h3>Now</h3><div class="tname">${esc(t.name)}</div><p>${esc(j.now)}</p>
-          <div class="btns"><button class="btn ghost" type="button" data-go="${t.id}">See how it works</button>${linkFor(t)}</div></div>`;
+          <div class="btns"><button class="btn ghost" type="button" data-go="${t.id}">See how it works</button>${linkFor(target)}</div></div>`;
       answer.classList.remove('swap');
     };
     if (instant) return render();
@@ -513,7 +528,7 @@
   function panelHtml(t, tab) {
     if (tab === 'problem') return t.problem.map((p) => `<p>${esc(p)}</p>`).join('');
     if (tab === 'how') return `<ol class="steps">${t.steps.map(([a, b]) => `<li><b>${esc(a)}</b><span>${esc(b)}</span></li>`).join('')}</ol>`;
-    if (tab === 'what') return `<dl class="feats">${t.features.map(([a, b]) => `<div><dt>${esc(a)}</dt><dd>${esc(b)}</dd></div>`).join('')}</dl>`;
+    if (tab === 'what') return `<dl class="feats">${t.features.map(([a, b, heavy]) => `<div${heavy ? ' class="heavy"' : ''}><dt>${esc(a)}</dt><dd>${esc(b)}</dd></div>`).join('')}</dl>`;
     return `<ul class="trust">${t.trust.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>`;
   }
   toolList.innerHTML = TOOLS.map((t) => `
@@ -523,7 +538,7 @@
         <h3>${esc(t.name)}</h3>
         ${pill(t)}
         <p>${esc(t.summary)}</p>
-        <div class="btns">${linkFor(t)}</div>
+        <div class="btns">${linksFor(t)}</div>
         ${t.note ? `<p class="note">${esc(t.note)}</p>` : ''}
       </aside>
       <div>
@@ -593,7 +608,7 @@
     const timer = setTimeout(() => ctrl.abort(), 9000);
     const t0 = performance.now();
     try {
-      await fetch(t.url, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
+      await fetch('https://' + t.host + '/', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
       return { ok: true, ms: Math.round(performance.now() - t0) };
     } catch (err) {
       return { ok: false };
